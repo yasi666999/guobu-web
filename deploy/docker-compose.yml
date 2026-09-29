@@ -1,0 +1,49 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8787
+      DATA_DIR: /app/data
+      COOKIE_SECURE: "1"
+      ALLOW_REGISTRATION: "0"
+      AUTO_COLLECT: "1"
+      FETCH_MIN_INTERVAL_SECONDS: "10"
+      FETCH_TIMEOUT_SECONDS: "25"
+      MAX_DOWNLOAD_MB: "25"
+      OCR_LANGUAGES: chi_sim+eng
+    volumes:
+      - guobu_data:/app/data
+    expose:
+      - "8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  guobu_data:
+  caddy_data:
+  caddy_config:

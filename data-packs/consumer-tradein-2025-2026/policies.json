@@ -1,0 +1,162 @@
+[
+  {
+    "externalId": "national-2026-home-appliance",
+    "title": "2026年家电以旧换新补贴",
+    "program": "消费品以旧换新",
+    "level": "national",
+    "issuer": "商务部办公厅等5部门",
+    "jurisdictionName": "全国",
+    "category": "家电",
+    "amountType": "percent",
+    "rate": 15,
+    "capAmount": 1500,
+    "effectiveFrom": "2026-01-01",
+    "effectiveTo": null,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202512/content_7053369.htm",
+    "notes": "适用于1级能效或水效标准的冰箱、洗衣机、电视、空调、热水器、电脑6类产品。每人每类可补贴1件。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "补贴标准为上述产品扣除各环节优惠后最终销售价格的15%", "confidence": 0.99 },
+      { "fieldName": "cap_amount", "quote": "家电产品每件补贴不超过1500元", "confidence": 0.99 }
+    ]
+  },
+  {
+    "externalId": "national-2026-digital-device",
+    "title": "2026年数码和智能产品购新补贴",
+    "program": "消费品以旧换新",
+    "level": "national",
+    "issuer": "商务部办公厅等5部门",
+    "jurisdictionName": "全国",
+    "category": "数码",
+    "amountType": "percent",
+    "rate": 15,
+    "capAmount": 500,
+    "effectiveFrom": "2026-01-01",
+    "effectiveTo": null,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202512/content_7053369.htm",
+    "notes": "适用于单价不超过6000元的手机、平板、智能手表（手环）、智能眼镜，每人每类可补贴1件。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "上述产品扣除各环节优惠后最终销售价格的15%", "confidence": 0.99 },
+      { "fieldName": "cap_amount", "quote": "数码和智能产品每件补贴不超过500元", "confidence": 0.99 }
+    ]
+  },
+  {
+    "externalId": "national-2026-auto-scrap-new-energy",
+    "title": "2026年汽车报废更新补贴·新能源乘用车",
+    "program": "汽车以旧换新",
+    "level": "national",
+    "issuer": "商务部办公厅等8部门",
+    "jurisdictionName": "全国",
+    "category": "汽车",
+    "amountType": "percent",
+    "rate": 12,
+    "capAmount": 20000,
+    "effectiveFrom": "2026-01-01",
+    "effectiveTo": null,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202512/content_7053324.htm",
+    "notes": "报废符合条件旧车并购买纳入目录的新能源乘用车，按新车销售价格（价税合计）的12%补贴。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "对报废上述符合条件旧车并购买新能源乘用车的，按新车销售价格的12%给予补贴", "confidence": 0.99 },
+      { "fieldName": "cap_amount", "quote": "补贴金额最高2万元", "confidence": 0.99 }
+    ]
+  },
+  {
+    "externalId": "national-2026-auto-scrap-fuel",
+    "title": "2026年汽车报废更新补贴·2.0升及以下燃油乘用车",
+    "program": "汽车以旧换新",
+    "level": "national",
+    "issuer": "商务部办公厅等8部门",
+    "jurisdictionName": "全国",
+    "category": "汽车",
+    "amountType": "percent",
+    "rate": 10,
+    "capAmount": 15000,
+    "effectiveFrom": "2026-01-01",
+    "effectiveTo": null,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202512/content_7053324.htm",
+    "notes": "报废符合条件燃油乘用车并购买2.0升及以下排量燃油乘用车。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "按新车销售价格的10%给予补贴", "confidence": 0.99 },
+      { "fieldName": "cap_amount", "quote": "补贴金额最高1.5万元", "confidence": 0.99 }
+    ]
+  },
+  {
+    "externalId": "national-2026-auto-replacement-new-energy",
+    "title": "2026年汽车置换更新补贴·新能源乘用车",
+    "program": "汽车以旧换新",
+    "level": "national",
+    "issuer": "商务部办公厅等8部门",
+    "jurisdictionName": "全国",
+    "category": "汽车",
+    "amountType": "percent",
+    "rate": 8,
+    "capAmount": 15000,
+    "effectiveFrom": "2026-01-01",
+    "effectiveTo": null,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202512/content_7053324.htm",
+    "notes": "转让本人名下乘用车并换购纳入目录的新能源乘用车。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "对换购符合上述条件新能源乘用车的，按新车销售价格的8%给予补贴", "confidence": 0.99 },
+      { "fieldName": "cap_amount", "quote": "补贴金额最高1.5万元", "confidence": 0.99 }
+    ]
+  },
+  {
+    "externalId": "national-2026-auto-replacement-fuel",
+    "title": "2026年汽车置换更新补贴·2.0升及以下燃油乘用车",
+    "program": "汽车以旧换新",
+    "level": "national",
+    "issuer": "商务部办公厅等8部门",
+    "jurisdictionName": "全国",
+    "category": "汽车",
+    "amountType": "percent",
+    "rate": 6,
+    "capAmount": 13000,
+    "effectiveFrom": "2026-01-01",
+    "effectiveTo": null,
+    "sourceUrl": "https://www.gov.cn/zhengce/zhengceku/202512/content_7053324.htm",
+    "notes": "转让本人名下乘用车并换购2.0升及以下排量燃油乘用车。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "对换购符合上述条件燃油乘用车的，按新车销售价格的6%给予补贴", "confidence": 0.99 },
+      { "fieldName": "cap_amount", "quote": "补贴金额最高1.3万元", "confidence": 0.99 }
+    ]
+  },
+  {
+    "externalId": "national-2025-home-appliance",
+    "title": "2025年家电以旧换新补贴（历史标准）",
+    "program": "消费品以旧换新",
+    "level": "national",
+    "issuer": "商务部等4部门",
+    "jurisdictionName": "全国",
+    "category": "家电",
+    "amountType": "percent",
+    "rate": 15,
+    "capAmount": 2000,
+    "effectiveFrom": "2025-01-20",
+    "effectiveTo": "2025-12-31",
+    "sourceUrl": "https://www.gov.cn/lianbo/bumen/202501/content_6998812.htm",
+    "notes": "12类家电基础补贴为最终销售价格的15%；1级及以上能效或水效产品额外再补5%；每件不超过2000元，空调每类最高补贴3件。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "补贴标准为上述产品最终销售价格的15%，对其中购买1级及以上能效或水效标准的产品额外再给予产品最终销售价格5%的补贴", "confidence": 0.98 },
+      { "fieldName": "cap_amount", "quote": "每件补贴不超过2000元", "confidence": 0.98 }
+    ]
+  },
+  {
+    "externalId": "national-2025-digital-device",
+    "title": "2025年手机等数码产品购新补贴（历史标准）",
+    "program": "消费品以旧换新",
+    "level": "national",
+    "issuer": "商务部等4部门",
+    "jurisdictionName": "全国",
+    "category": "数码",
+    "amountType": "percent",
+    "rate": 15,
+    "capAmount": 500,
+    "effectiveFrom": "2025-01-20",
+    "effectiveTo": "2025-12-31",
+    "sourceUrl": "https://www.gov.cn/lianbo/bumen/202501/content_6998812.htm",
+    "notes": "手机、平板、智能手表（手环）3类产品，单价不超过6000元；每人每类可补贴1件。",
+    "evidence": [
+      { "fieldName": "rate", "quote": "每件补贴比例为减去生产、流通环节及移动运营商所有优惠后最终销售价格的15%", "confidence": 0.98 },
+      { "fieldName": "cap_amount", "quote": "每件最高不超过500元", "confidence": 0.98 }
+    ]
+  }
+]

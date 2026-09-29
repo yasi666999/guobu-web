@@ -1,0 +1,77 @@
+[
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "allocated_funds",
+    "amountYuan": 187500000000,
+    "asOfDate": "2026-08-23",
+    "sourceUrl": "https://www.gov.cn/lianbo/202608/content_7078928.htm",
+    "quote": "财政部多措并举继续支持鼓励消费，下达消费品以旧换新资金1875亿元"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "driven_sales",
+    "amountYuan": 1320000000000,
+    "asOfDate": "2026-08-23",
+    "sourceUrl": "https://www.gov.cn/lianbo/202608/content_7078928.htm",
+    "quote": "带动相关商品销售额约1.32万亿元"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "beneficiary_count",
+    "countValue": 178000000,
+    "unit": "人次",
+    "asOfDate": "2026-08-23",
+    "sourceUrl": "https://www.gov.cn/lianbo/202608/content_7078928.htm",
+    "quote": "惠及1.78亿人次"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "driven_sales",
+    "amountYuan": 1540000000000,
+    "asOfDate": "2026-08-30",
+    "sourceUrl": "https://www.gov.cn/yaowen/liebiao/202609/content_7079762.htm",
+    "quote": "截至8月30日，2026年消费品以旧换新累计带动相关商品销售超1.54万亿元"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "beneficiary_count",
+    "countValue": 206000000,
+    "unit": "人次",
+    "asOfDate": "2026-08-30",
+    "sourceUrl": "https://www.gov.cn/yaowen/liebiao/202609/content_7079762.htm",
+    "quote": "惠及超2.06亿人次"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "allocated_funds",
+    "amountYuan": 62500000000,
+    "asOfDate": "2026-06-26",
+    "sourceUrl": "https://www.gov.cn/lianbo/202606/content_7073467.htm",
+    "quote": "向地方下达了今年第三批625亿元超长期特别国债支持消费品以旧换新资金"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "driven_sales",
+    "amountYuan": 1100000000000,
+    "asOfDate": "2026-07-22",
+    "sourceUrl": "https://www.gov.cn/lianbo/202607/content_7076295.htm",
+    "quote": "2026年上半年，消费品以旧换新累计带动相关商品销售额1.1万亿元"
+  },
+  {
+    "jurisdictionName": "全国",
+    "program": "消费品以旧换新",
+    "metricType": "beneficiary_count",
+    "countValue": 150000000,
+    "unit": "人次",
+    "asOfDate": "2026-07-22",
+    "sourceUrl": "https://www.gov.cn/lianbo/202607/content_7076295.htm",
+    "quote": "惠及1.5亿人次"
+  }
+]

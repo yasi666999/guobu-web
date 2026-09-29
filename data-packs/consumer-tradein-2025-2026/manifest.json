@@ -1,0 +1,13 @@
+{
+  "packId": "consumer-tradein-2025-2026",
+  "version": "1.0.0",
+  "title": "消费品以旧换新国家级政策与执行统计（2025-2026）",
+  "description": "仅收录中国政府网可追溯的国家级政策和官方公开统计。地方细则应使用独立数据包。",
+  "generatedAt": "2026-09-28",
+  "sourcePolicy": "official-only",
+  "files": {
+    "sources": "sources.json",
+    "policies": "policies.json",
+    "aggregates": "aggregates.json"
+  }
+}

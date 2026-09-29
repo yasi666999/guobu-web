@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: guobu-hub
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: "8787"
+      - key: DATA_DIR
+        value: /app/data
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: ALLOW_REGISTRATION
+        value: "0"
+      - key: AUTO_COLLECT
+        value: "1"
+      - key: FETCH_MIN_INTERVAL_SECONDS
+        value: "10"
+    disk:
+      name: guobu-data
+      mountPath: /app/data
+      sizeGB: 10

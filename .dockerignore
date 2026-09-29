@@ -1,0 +1,10 @@
+.git
+.idea
+.env
+data
+exports
+node_modules
+npm-debug.log
+*.log
+tests
+data-packs/*.zip

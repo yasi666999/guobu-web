@@ -1,0 +1,82 @@
+[
+  {
+    "name": "中国政府网·政策文件库",
+    "level": "national",
+    "jurisdictionName": "全国",
+    "baseUrl": "https://www.gov.cn/zhengce/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "仅采集公开政策公告。"
+  },
+  {
+    "name": "国家发展改革委",
+    "level": "national",
+    "jurisdictionName": "全国",
+    "baseUrl": "https://www.ndrc.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "仅采集公开政策公告。"
+  },
+  {
+    "name": "财政部",
+    "level": "national",
+    "jurisdictionName": "全国",
+    "baseUrl": "https://www.mof.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "仅采集公开政策公告。"
+  },
+  {
+    "name": "商务部",
+    "level": "national",
+    "jurisdictionName": "全国",
+    "baseUrl": "https://www.mofcom.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "仅采集公开政策公告。"
+  },
+  {
+    "name": "广东省商务厅",
+    "level": "province",
+    "jurisdictionName": "广东省",
+    "baseUrl": "https://com.gd.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "地方细则数据包启用前需补充具体栏目和条款核验。"
+  },
+  {
+    "name": "江苏省商务厅",
+    "level": "province",
+    "jurisdictionName": "江苏省",
+    "baseUrl": "http://swt.jiangsu.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "地方细则数据包启用前需补充具体栏目和条款核验。"
+  },
+  {
+    "name": "浙江省商务厅",
+    "level": "province",
+    "jurisdictionName": "浙江省",
+    "baseUrl": "http://zcom.zj.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "地方细则数据包启用前需补充具体栏目和条款核验。"
+  },
+  {
+    "name": "山东省商务厅",
+    "level": "province",
+    "jurisdictionName": "山东省",
+    "baseUrl": "http://commerce.shandong.gov.cn/",
+    "sourceType": "html_listing",
+    "accessMethod": "manual",
+    "frequency": "weekly",
+    "complianceNote": "地方细则数据包启用前需补充具体栏目和条款核验。"
+  }
+]
