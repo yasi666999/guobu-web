@@ -50,6 +50,19 @@ DOMAIN=guobu.example.com
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
+如果 GitHub Actions 已经成功发布镜像，也可以直接拉取：
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml pull
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+```
+
+镜像地址：
+
+```text
+ghcr.io/yasi666999/guobu-web:latest
+```
+
 上线前可先在服务器上运行：
 
 ```bash

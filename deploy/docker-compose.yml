@@ -1,5 +1,6 @@
 services:
   app:
+    image: ghcr.io/yasi666999/guobu-web:latest
     build:
       context: ..
       dockerfile: Dockerfile
