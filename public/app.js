@@ -18,6 +18,7 @@ const state = {
   policies: [],
   facets: { provinces: [], cities: [], districts: [], categories: [] },
   filters: { province: '', city: '', district: '', category: '', q: '' },
+  editingSourceId: null,
   preview: null,
   policyQuery: '',
   selected: null,
@@ -225,30 +226,32 @@ function renderSourcesV2() {
   const intervalLabel = (source) => source.intervalMinutes
     ? `${source.intervalMinutes} 分钟`
     : { daily: '每天', weekly: '每周', monthly: '每月', manual: '手动' }[source.frequency] || source.frequency;
+  const editing = state.editingSourceId ? state.sources.find((source) => source.id === state.editingSourceId) : null;
+  const selected = (value, target) => String(value ?? '') === String(target ?? '') ? 'selected' : '';
   return shell(`
     <section class="card">
-      <div class="card-title"><div><h2>定时抓取任务</h2><p>配置网站栏目、抓取间隔、地区和关键词，系统会自动抓取并解析。</p></div></div>
+      <div class="card-title"><div><h2>${editing ? '编辑定时抓取任务' : '定时抓取任务'}</h2><p>配置网站栏目、抓取间隔、地区和关键词，系统会自动抓取并解析。</p></div></div>
       <form id="source-form" class="form-grid">
-        <div class="field"><label>任务名称</label><input name="name" required placeholder="例如：广东省商务厅政策公告"></div>
-        <div class="field"><label>网站栏目 URL</label><input name="listingUrl" type="url" required placeholder="https://..."></div>
-        <div class="field"><label>行政层级</label><select name="level"><option value="national">国家级</option><option value="province">省级</option><option value="city">市级</option><option value="district">区县级</option><option value="other">其他</option></select></div>
-        <div class="field"><label>地区</label><input name="jurisdictionName" placeholder="广东省 / 广州市"></div>
-        <div class="field"><label>品类</label><input name="category" placeholder="家电、汽车、数码、农机"></div>
-        <div class="field"><label>关注关键词</label><input name="keywords" placeholder="以旧换新, 补贴, 国补"></div>
-        <div class="field"><label>抓取间隔</label><select name="intervalMinutes"><option value="30">30 分钟</option><option value="60">1 小时</option><option value="360">6 小时</option><option value="720">12 小时</option><option value="1440" selected>每天</option><option value="10080">每周</option></select></div>
-        <div class="field"><label>启用状态</label><select name="enabled"><option value="1">启用</option><option value="0">停用</option></select></div>
-        <input type="hidden" name="accessMethod" value="scheduled">
-        <input type="hidden" name="frequency" value="daily">
-        <input type="hidden" name="sourceType" value="html_listing">
-        <div class="field full"><label>站点首页（可选）</label><input name="baseUrl" type="url" placeholder="https://..."></div>
-        <div class="field full"><label>备注</label><textarea name="complianceNote" placeholder="记录来源说明、访问频率限制和负责人。"></textarea></div>
-        <div class="full actions"><button class="btn primary" type="submit">保存定时任务</button></div>
+        <div class="field"><label>任务名称</label><input name="name" required value="${esc(editing?.name || '')}" placeholder="例如：广东省商务厅政策公告"></div>
+        <div class="field"><label>网站栏目 URL</label><input name="listingUrl" type="url" required value="${esc(editing?.listingUrl || '')}" placeholder="https://..."></div>
+        <div class="field"><label>行政层级</label><select name="level"><option value="national" ${selected(editing?.level, 'national')}>国家级</option><option value="province" ${selected(editing?.level, 'province')}>省级</option><option value="city" ${selected(editing?.level, 'city')}>市级</option><option value="district" ${selected(editing?.level, 'district')}>区县级</option><option value="other" ${selected(editing?.level, 'other')}>其他</option></select></div>
+        <div class="field"><label>地区</label><input name="jurisdictionName" value="${esc(editing?.jurisdictionName || '')}" placeholder="广东省 / 广州市"></div>
+        <div class="field"><label>品类</label><input name="category" value="${esc(editing?.category || '')}" placeholder="家电、汽车、数码、农机"></div>
+        <div class="field"><label>关注关键词</label><input name="keywords" value="${esc(editing?.keywords || '')}" placeholder="以旧换新, 补贴, 国补"></div>
+        <div class="field"><label>抓取间隔</label><select name="intervalMinutes"><option value="30" ${selected(editing?.intervalMinutes, 30)}>30 分钟</option><option value="60" ${selected(editing?.intervalMinutes, 60)}>1 小时</option><option value="360" ${selected(editing?.intervalMinutes, 360)}>6 小时</option><option value="720" ${selected(editing?.intervalMinutes, 720)}>12 小时</option><option value="1440" ${selected(editing?.intervalMinutes ?? 1440, 1440)}>每天</option><option value="10080" ${selected(editing?.intervalMinutes, 10080)}>每周</option></select></div>
+        <div class="field"><label>启用状态</label><select name="enabled"><option value="1" ${selected(editing?.enabled ?? true, true)}>启用</option><option value="0" ${selected(editing?.enabled, false)}>停用</option></select></div>
+        <input type="hidden" name="accessMethod" value="${esc(editing?.accessMethod || 'scheduled')}">
+        <input type="hidden" name="frequency" value="${esc(editing?.frequency || 'daily')}">
+        <input type="hidden" name="sourceType" value="${esc(editing?.sourceType || 'html_listing')}">
+        <div class="field full"><label>站点首页（可选）</label><input name="baseUrl" type="url" value="${esc(editing?.baseUrl || '')}" placeholder="https://..."></div>
+        <div class="field full"><label>备注</label><textarea name="complianceNote" placeholder="记录来源说明、访问频率限制和负责人。">${esc(editing?.complianceNote || '')}</textarea></div>
+        <div class="full actions"><button class="btn primary" type="submit">${editing ? '保存修改' : '保存定时任务'}</button>${editing ? '<button class="btn" type="button" data-action="cancel-source-edit">取消编辑</button>' : ''}</div>
       </form>
     </section>
     <section class="card">
       <div class="card-title"><div><h2>定时任务列表</h2><p>${state.sources.length} 个任务</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>任务 / 地址</th><th>地区 / 品类</th><th>间隔</th><th>下次执行</th><th>最近状态</th><th>操作</th></tr></thead><tbody>
-      ${state.sources.length ? state.sources.map((source) => `<tr><td><div class="title">${esc(source.name)}</div><div class="meta truncate">${esc(source.listingUrl || '未配置 URL')}</div></td><td>${esc(source.jurisdictionName || '—')}<div class="meta">${esc(source.category || '—')}</div></td><td>${esc(intervalLabel(source))}</td><td>${formatTime(source.nextFetchAt)}</td><td>${source.enabled ? '<span class="badge approved">启用</span>' : '<span class="badge rejected">停用</span>'}${source.lastRunStatus ? `<div class="meta">${esc(source.lastRunStatus === 'success' ? '成功' : '失败')} · ${formatTime(source.lastFetchedAt)}</div>` : ''}${source.lastError ? `<div class="meta">${esc(source.lastError)}</div>` : ''}</td><td><div class="list-actions"><select data-action="set-source-interval" data-id="${esc(source.id)}" title="设置抓取间隔"><option value="">设置间隔</option><option value="30">30 分钟</option><option value="60">1 小时</option><option value="360">6 小时</option><option value="720">12 小时</option><option value="1440">每天</option><option value="10080">每周</option></select><button class="btn small primary" data-action="poll-source" data-id="${esc(source.id)}">立即运行</button><button class="btn small" data-action="toggle-source" data-id="${esc(source.id)}" data-enabled="${source.enabled ? '1' : '0'}">${source.enabled ? '停用' : '启用'}</button></div></td></tr>`).join('') : '<tr><td colspan="6" class="empty">还没有定时任务。</td></tr>'}
+      ${state.sources.length ? state.sources.map((source) => `<tr><td><div class="title">${esc(source.name)}</div><div class="meta truncate">${esc(source.listingUrl || '未配置 URL')}</div></td><td>${esc(source.jurisdictionName || '—')}<div class="meta">${esc(source.category || '—')}</div></td><td>${esc(intervalLabel(source))}</td><td>${formatTime(source.nextFetchAt)}</td><td>${source.enabled ? '<span class="badge approved">启用</span>' : '<span class="badge rejected">停用</span>'}${source.lastRunStatus ? `<div class="meta">${esc(source.lastRunStatus === 'success' ? '成功' : '失败')} · ${formatTime(source.lastFetchedAt)}</div>` : ''}${source.lastError ? `<div class="meta">${esc(source.lastError)}</div>` : ''}</td><td><div class="list-actions"><button class="btn small" data-action="edit-source" data-id="${esc(source.id)}">编辑</button><button class="btn small" data-action="delete-source" data-id="${esc(source.id)}">删除</button><select data-action="set-source-interval" data-id="${esc(source.id)}" title="设置抓取间隔"><option value="">设置间隔</option><option value="30">30 分钟</option><option value="60">1 小时</option><option value="360">6 小时</option><option value="720">12 小时</option><option value="1440">每天</option><option value="10080">每周</option></select><button class="btn small primary" data-action="poll-source" data-id="${esc(source.id)}">立即运行</button><button class="btn small" data-action="toggle-source" data-id="${esc(source.id)}" data-enabled="${source.enabled ? '1' : '0'}">${source.enabled ? '停用' : '启用'}</button></div></td></tr>`).join('') : '<tr><td colspan="6" class="empty">还没有定时任务。</td></tr>'}
       </tbody></table></div>
     </section>`, '定时抓取任务', '设置网站抓取周期，自动解析国补相关内容');
 }
@@ -607,6 +610,28 @@ async function handleAction(action, target) {
     } catch (error) { toast(error.message, 'error'); }
     return;
   }
+  if (action === 'edit-source') {
+    state.editingSourceId = target.dataset.id;
+    state.view = 'sources';
+    render();
+    return;
+  }
+  if (action === 'cancel-source-edit') {
+    state.editingSourceId = null;
+    render();
+    return;
+  }
+  if (action === 'delete-source') {
+    if (!window.confirm('确定删除这个定时任务吗？已采集的文档和已入库政策会保留。')) return;
+    try {
+      await api(`/api/sources/${target.dataset.id}`, { method: 'DELETE' });
+      if (state.editingSourceId === target.dataset.id) state.editingSourceId = null;
+      toast('定时任务已删除，历史数据已保留', 'success');
+      await refresh();
+      render();
+    } catch (error) { toast(error.message, 'error'); }
+    return;
+  }
   if (action === 'discard-preview') {
     state.preview = null;
     render();
@@ -766,8 +791,15 @@ app.addEventListener('submit', async (event) => {
       state.user = data.user; state.csrfToken = data.csrfToken; await refresh(); state.view = 'dashboard'; render(); toast('注册成功', 'success'); return;
     }
     if (form.id === 'source-form') {
-      const data = await api('/api/sources', { method: 'POST', body: new FormData(form) });
-      toast(`已登记：${data.source.name}`, 'success'); await refresh(); render(); return;
+      if (state.editingSourceId) {
+        const data = await api(`/api/sources/${state.editingSourceId}`, { method: 'PATCH', body: Object.fromEntries(new FormData(form).entries()) });
+        state.editingSourceId = null;
+        toast(`已保存：${data.source.name}`, 'success');
+      } else {
+        const data = await api('/api/sources', { method: 'POST', body: new FormData(form) });
+        toast(`已登记：${data.source.name}`, 'success');
+      }
+      await refresh(); render(); return;
     }
     if (form.id === 'collect-form') {
       const data = await api('/api/collect', { method: 'POST', body: new FormData(form) });

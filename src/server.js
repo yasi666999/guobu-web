@@ -737,6 +737,22 @@ async function handleApi(db, req, res, url) {
     addEvent(db, { entityType: 'source', entityId: source.id, actorId: writer.id, action: 'updated' });
     return jsonResponse(res, 200, { source: sourceView(getSource(db, source.id)) });
   }
+  if (sourceMatch && req.method === 'DELETE') {
+    const writer = requireUser(db, req);
+    const source = getSource(db, sourceMatch[1]);
+    if (!source) throw httpError('数据源不存在', 404);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('UPDATE documents SET source_id = NULL WHERE source_id = ?').run(source.id);
+      db.prepare('DELETE FROM sources WHERE id = ?').run(source.id);
+      addEvent(db, { entityType: 'source', entityId: source.id, actorId: writer.id, action: 'deleted', detail: { name: source.name } });
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return jsonResponse(res, 200, { ok: true });
+  }
   const pollMatch = /^\/api\/sources\/([^/]+)\/poll$/.exec(pathname);
   if (pollMatch && req.method === 'POST') {
     const writer = requireRole(db, req, ['admin', 'reviewer', 'contributor']);
