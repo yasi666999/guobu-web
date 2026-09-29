@@ -108,6 +108,7 @@ test('注册、提交、审核和发布主流程可运行', async () => {
       fields: {
         title: { value: '2026年数码产品购新补贴测试政策' },
         issuer: { value: '商务部' },
+        funding_source: { value: '中央财政' },
         jurisdiction_name: { value: '全国' },
         category: { value: '数码' },
         amount_type: { value: 'percent' },

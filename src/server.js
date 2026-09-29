@@ -394,6 +394,7 @@ function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) {
   const jurisdictionName = overrides.jurisdictionName || summary.jurisdictionName || '全国';
   const title = overrides.title || summary.title || document.title || '未命名国补政策';
   const issuer = overrides.issuer || summary.issuer || '';
+  const fundingSource = overrides.fundingSource || summary.fundingSource || '';
   const amountType = overrides.amountType || summary.amountType || 'unknown';
   const rate = overrides.rate ?? summary.rate ?? null;
   const amountValue = overrides.amountValue ?? summary.amountValue ?? null;
@@ -436,12 +437,12 @@ function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) {
     );
     db.prepare(`
       INSERT INTO policies (
-        id, contribution_id, title, program, policy_level, issuer, jurisdiction_code, jurisdiction_name,
+        id, contribution_id, title, program, policy_level, issuer, funding_source, jurisdiction_code, jurisdiction_name,
         status, effective_from, effective_to, source_url, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       policyId, contributionId, title, overrides.program || summary.program || '消费品以旧换新', policyLevel,
-      issuer, jurisdictionName, status, effectiveFrom, effectiveTo, sourceUrl, timestamp, timestamp,
+      issuer, fundingSource, jurisdictionName, status, effectiveFrom, effectiveTo, sourceUrl, timestamp, timestamp,
     );
     db.prepare(`
       INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, conditions_json, created_at)
@@ -939,7 +940,9 @@ async function handleApi(db, req, res, url) {
       program: row.program,
       level: row.policy_level,
       issuer: row.issuer,
+      fundingSource: row.funding_source,
       jurisdictionName: row.jurisdiction_name,
+      geo: geoParts(row.jurisdiction_name),
       geo: geoParts(row.jurisdiction_name),
       status: row.status,
       effectiveFrom: row.effective_from,
@@ -1022,6 +1025,7 @@ async function handleApi(db, req, res, url) {
     `).all(...values);
     return jsonResponse(res, 200, { policies: rows.map((row) => ({
       id: row.id, title: row.title, program: row.program, level: row.policy_level, issuer: row.issuer,
+      fundingSource: row.funding_source,
       jurisdictionName: row.jurisdiction_name, status: row.status, effectiveFrom: row.effective_from,
       effectiveTo: row.effective_to, sourceUrl: row.source_url, category: row.category,
       amountType: row.amount_type, rate: row.rate, fixedAmount: row.fixed_amount, capAmount: row.cap_amount,

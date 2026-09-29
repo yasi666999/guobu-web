@@ -42,6 +42,7 @@ test('HTML 文档能够抽取比例、上限、地区和有效期', () => {
   assert.equal(parsed.status, 'processed');
   assert.equal(parsed.fields.rate.value, 15);
   assert.equal(parsed.fields.cap_amount.value, 1000);
+  assert.equal(parsed.fields.funding_source.value, '中央财政/超长期特别国债');
   assert.equal(parsed.fields.jurisdiction_name.value, '广东');
   assert.equal(parsed.fields.effective_from.value, '2026-04-01');
   assert.equal(parsed.fields.effective_to.value, '2026-12-31');

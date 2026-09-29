@@ -132,9 +132,9 @@ function importPolicies(db, policies, summary) {
   `);
   const insertPolicy = db.prepare(`
     INSERT INTO policies (
-      id, contribution_id, title, program, policy_level, issuer, jurisdiction_name,
+      id, contribution_id, title, program, policy_level, issuer, funding_source, jurisdiction_name,
       status, effective_from, effective_to, source_url, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertRule = db.prepare(`
     INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, created_at)
@@ -176,7 +176,7 @@ function importPolicies(db, policies, summary) {
     );
     insertPolicy.run(
       policyId, contributionId, policy.title, policy.program, policy.level, policy.issuer,
-      policy.jurisdictionName, status, policy.effectiveFrom, policy.effectiveTo || null,
+      policy.fundingSource || null, policy.jurisdictionName, status, policy.effectiveFrom, policy.effectiveTo || null,
       policy.sourceUrl, timestamp, timestamp,
     );
     insertRule.run(

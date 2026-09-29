@@ -14,6 +14,7 @@ const ITEMS = [
     rate: 15,
     capAmount: 1500,
     sourceUrl: APPLIANCE_URL,
+    fundingSource: '中央财政/超长期特别国债',
     notes: '全国统一标准。对1级能效或水效标准的冰箱、洗衣机、电视、空调、热水器、电脑6类家电产品，按扣除优惠后最终销售价格的15%补贴；每人每类可补贴1件，每件不超过1500元。',
     quote: '补贴标准为上述产品扣除各环节优惠后最终销售价格的15%，每人每类可补贴1件，其中，家电产品每件补贴不超过1500元',
   },
@@ -24,6 +25,7 @@ const ITEMS = [
     rate: 15,
     capAmount: 500,
     sourceUrl: APPLIANCE_URL,
+    fundingSource: '中央财政/超长期特别国债',
     notes: '适用于单价不超过6000元的手机、平板、智能手表（手环）、智能眼镜。按最终销售价格的15%补贴，每人每类可补贴1件，每件不超过500元。',
     quote: '单件销售价格不超过6000元的手机、平板、智能手表（手环）、智能眼镜4类数码和智能产品给予补贴……数码和智能产品每件补贴不超过500元',
   },
@@ -34,6 +36,7 @@ const ITEMS = [
     rate: 12,
     capAmount: 20000,
     sourceUrl: AUTO_URL,
+    fundingSource: '中央财政/超长期特别国债',
     notes: '报废符合条件的旧车并购买纳入目录的新能源乘用车，按新车销售价格（价税合计）的12%补贴，最高2万元。每位消费者只能享受一次汽车报废更新或置换更新补贴。',
     quote: '对报废上述符合条件旧车并购买新能源乘用车的，按新车销售价格的12%给予补贴，补贴金额最高2万元',
   },
@@ -44,6 +47,7 @@ const ITEMS = [
     rate: 10,
     capAmount: 15000,
     sourceUrl: AUTO_URL,
+    fundingSource: '中央财政/超长期特别国债',
     notes: '报废符合条件的燃油乘用车并购买2.0升及以下排量燃油乘用车，按新车销售价格的10%补贴，最高1.5万元。',
     quote: '对报废上述符合条件燃油乘用车并购买2.0升及以下排量燃油乘用车的，按新车销售价格的10%给予补贴，补贴金额最高1.5万元',
   },
@@ -54,6 +58,7 @@ const ITEMS = [
     rate: 8,
     capAmount: 15000,
     sourceUrl: AUTO_URL,
+    fundingSource: '中央财政/超长期特别国债',
     notes: '转让本人名下乘用车并购买纳入目录的新能源乘用车，按新车销售价格的8%补贴，最高1.5万元。',
     quote: '对换购符合上述条件新能源乘用车的，按新车销售价格的8%给予补贴，补贴金额最高1.5万元',
   },
@@ -64,6 +69,7 @@ const ITEMS = [
     rate: 6,
     capAmount: 13000,
     sourceUrl: AUTO_URL,
+    fundingSource: '中央财政/超长期特别国债',
     notes: '转让本人名下乘用车并购买2.0升及以下排量燃油乘用车，按新车销售价格的6%补贴，最高1.3万元。',
     quote: '对换购符合上述条件燃油乘用车的，按新车销售价格的6%给予补贴，补贴金额最高1.3万元',
   },
@@ -115,10 +121,10 @@ const insertContribution = db.prepare(`
 `);
 const insertPolicy = db.prepare(`
   INSERT INTO policies (
-    id, contribution_id, title, program, policy_level, issuer, jurisdiction_name,
-    status, effective_from, source_url, created_at, updated_at
-  ) VALUES (?, ?, ?, '消费品以旧换新', 'national', ?, '全国', 'active', '2026-01-01', ?, ?, ?)
-`);
+      id, contribution_id, title, program, policy_level, issuer, jurisdiction_name,
+      funding_source, status, effective_from, source_url, created_at, updated_at
+    ) VALUES (?, ?, ?, '消费品以旧换新', 'national', ?, '全国', ?, 'active', '2026-01-01', ?, ?, ?)
+  `);
 const insertRule = db.prepare(`
   INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, cap_amount, created_at)
   VALUES (?, ?, ?, 'percent', ?, ?, ?)
@@ -149,7 +155,7 @@ for (const item of ITEMS) {
     item.sourceUrl, item.notes, JSON.stringify(validation), dedupKey, admin.id, timestamp, timestamp, timestamp,
   );
   const policyId = newId();
-  insertPolicy.run(policyId, contributionId, item.title, item.issuer, item.sourceUrl, timestamp, timestamp);
+  insertPolicy.run(policyId, contributionId, item.title, item.issuer, item.fundingSource, item.sourceUrl, timestamp, timestamp);
   insertRule.run(newId(), policyId, item.category, item.rate, item.capAmount, timestamp);
   insertEvidence.run(newId(), policyId, 'rate', item.quote, 0.98, timestamp);
   insertEvidence.run(newId(), policyId, 'cap_amount', item.quote, 0.98, timestamp);

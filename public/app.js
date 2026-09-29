@@ -286,6 +286,14 @@ function previewField(document, name) {
   return document?.extracted?.fields?.[name]?.value;
 }
 
+function splitGeoName(name) {
+  const text = String(name || '').replace(/\s+/g, '').replace(/／/g, '/');
+  const province = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/)?.[1] || (text.includes('全国') ? '全国' : '');
+  const city = text.match(/([^/]+?市)/)?.[1] || '';
+  const district = text.match(/([^/]+?(?:区|县|旗))/)?.[1] || '';
+  return { province, city, district };
+}
+
 function renderPreview(document) {
   if (!document) return '';
   const relevance = document.extracted?.relevance || {};
@@ -320,6 +328,39 @@ function renderPreview(document) {
     </section>`;
 }
 
+function renderInterpretationPreview(document) {
+  if (!document) return '';
+  const relevance = document.extracted?.relevance || {};
+  const fields = document.extracted?.fields || {};
+  const evidence = document.extracted?.evidence || [];
+  const warnings = document.extracted?.warnings || [];
+  const geo = splitGeoName(fields.jurisdiction_name?.value);
+  const levelLabel = { high: '高度相关', medium: '可能相关', low: '弱相关', none: '未匹配' }[relevance.level] || '未匹配';
+  return `
+    <section class="card">
+      <div class="card-title"><div><h2>网站解读展览</h2><p>确认以下字段后导入数据库。</p></div><div class="list-actions"><span class="badge ${relevance.isRelated ? 'approved' : 'rejected'}">${esc(levelLabel)} · ${esc(relevance.score || 0)} 分</span></div></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴比例</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody><tr>
+        <td class="mono">${esc(String(document.id || '').slice(0, 8))}</td>
+        <td><div class="title">${esc(fields.title?.value || document.title || '—')}</div></td>
+        <td>${esc(fields.funding_source?.value || '未在原文中明确')}</td>
+        <td>${esc(fields.category?.value || '—')}</td>
+        <td>${esc(geo.province || '—')}</td>
+        <td>${esc(geo.city || '—')}</td>
+        <td>${fields.rate?.value != null ? `${esc(fields.rate.value)}%` : '—'}</td>
+        <td>${fields.cap_amount?.value != null ? `${esc(fields.cap_amount.value)} 元` : '—'}</td>
+        <td>${esc(fields.effective_from?.value || '—')}</td>
+        <td>${esc(fields.effective_to?.value || '—')}</td>
+        <td>${document.url ? `<a href="${esc(document.url)}" target="_blank" rel="noreferrer">查看原文</a>` : '—'}</td>
+      </tr></tbody></table></div>
+      ${relevance.summary ? `<div class="notice ${relevance.isRelated ? 'success' : 'warn'}" style="margin-top:12px">${esc(relevance.summary)}</div>` : ''}
+      ${warnings.length ? `<div class="notice warn" style="margin-top:10px">${warnings.map(esc).join('；')}</div>` : ''}
+      <div class="grid two" style="margin-top:16px">
+        <div><h3>原文证据</h3>${evidence.length ? evidence.slice(0, 8).map((item) => `<div class="evidence">${esc(item.quote || '')}<small>${esc(item.field_name)} · 第 ${esc(item.page_number || '?')} 页</small></div>`).join('') : '<div class="notice">未抽取到字段级引文。</div>'}</div>
+        <div><h3>操作</h3><div class="actions"><button class="btn primary" data-action="import-preview" data-id="${esc(document.id)}" ${relevance.isRelated ? '' : 'disabled'}>导入数据库</button><button class="btn" data-action="parse-document" data-id="${esc(document.id)}">重新解析</button><button class="btn ghost" data-action="discard-preview">取消展览</button></div><p class="muted small">解析字符数：${esc(document.extracted?.text_chars || 0)}</p></div>
+      </div>
+    </section>`;
+}
+
 function renderCollectV2() {
   const recent = state.documents.slice(0, 8);
   return shell(`
@@ -332,7 +373,7 @@ function renderCollectV2() {
         <button class="btn primary" type="submit">识别并生成预展</button>
       </form>
     </section>
-    ${renderPreview(state.preview)}
+    ${renderInterpretationPreview(state.preview)}
     <section class="card">
       <div class="card-title"><div><h2>最近采集页面</h2><p>${recent.length} 条最近快照</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>标题</th><th>识别结果</th><th>解析状态</th><th>采集时间</th><th>操作</th></tr></thead><tbody>
@@ -374,8 +415,8 @@ function renderSourceDashboard() {
     </section>
     <section class="card">
       <div class="card-title"><div><h2>已入库相关内容</h2><p>按省市区、品类和相关内容筛选后的政策列表。</p></div></div>
-      <div class="table-wrap"><table><thead><tr><th>省 / 市 / 区</th><th>品类</th><th>相关内容</th><th>政策</th><th>金额规则</th><th>来源</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td>${esc(item.geo?.province || '—')}<div class="meta">${esc(item.geo?.city || '')}${item.geo?.district ? ` / ${esc(item.geo.district)}` : ''}</div></td><td>${esc(item.category || '—')}</td><td><div class="title">${esc(item.title)}</div><div class="meta truncate">${esc(item.contentSnippet || item.content || '')}</div></td><td>${esc(item.issuer || '')}<div class="meta">${esc(item.effectiveFrom || '—')} → ${esc(item.effectiveTo || '—')}</div></td><td>${item.rate != null ? `${esc(item.rate)}%` : ''}${item.capAmount != null ? ` · 上限 ${esc(item.capAmount)} 元` : ''}${item.rate == null && item.capAmount == null ? '—' : ''}</td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">官方原文</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">没有匹配内容。</td></tr>'}
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴比例</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody>
+      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}</td><td><div class="title">${esc(item.title)}</div><div class="meta truncate">${esc(item.contentSnippet || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${item.rate != null ? `${esc(item.rate)}%` : '—'}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} 元` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}</td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">查看原文</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="11" class="empty">没有匹配内容。</td></tr>'}
       </tbody></table></div>
     </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }

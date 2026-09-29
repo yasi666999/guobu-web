@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS contributions (
   program TEXT,
   policy_level TEXT,
   issuer TEXT,
+  funding_source TEXT,
   jurisdiction_code TEXT,
   jurisdiction_name TEXT,
   category TEXT,

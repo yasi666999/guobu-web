@@ -314,6 +314,23 @@ def extract_program(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def extract_funding_source(text: str) -> tuple[str | None, str | None]:
+    funding_rules = [
+        ("中央财政/超长期特别国债", ["超长期特别国债", "中央财政资金", "中央财政"]),
+        ("省级财政", ["省级财政", "省财政安排", "省财政厅安排"]),
+        ("市级财政", ["市级财政", "市财政安排", "市财政局安排"]),
+        ("中央与地方共同承担", ["中央与地方", "中央和地方", "央地共担"]),
+        ("财政资金", ["财政资金", "财政部安排", "财政部门安排"]),
+        ("未在原文中明确", ["补贴资金由", "资金来源"]),
+    ]
+    for label, keywords in funding_rules:
+        for keyword in keywords:
+            index = text.find(keyword)
+            if index >= 0:
+                return label, text[max(0, index - 40): index + len(keyword) + 80]
+    return None, None
+
+
 def extract_jurisdiction(text: str) -> tuple[str | None, str | None]:
     for province in PROVINCES:
         index = text.find(province)
@@ -384,6 +401,10 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
     issuer_match = re.search(r"(国务院|财政部|商务部|国家发展改革委|国家发改委|工业和信息化部|农业农村部|市场监管总局|省(?:人民)?政府|市(?:人民)?政府|商务厅|财政厅|发展改革委|农业农村厅|商务局|财政局)", text)
     if issuer_match:
         fields["issuer"] = field(issuer_match.group(1), 0.72, text[max(0, issuer_match.start() - 30): issuer_match.end() + 50])
+
+    funding_source, funding_quote = extract_funding_source(text)
+    if funding_source:
+        fields["funding_source"] = field(funding_source, 0.72, funding_quote or "")
 
     published = str(metadata.get("published_at", "")).strip()
     if not published:

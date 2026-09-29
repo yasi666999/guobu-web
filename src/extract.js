@@ -210,6 +210,7 @@ export function extractedFieldSummary(parsed) {
     title: fieldValue(parsed, 'title') || '',
     docNo: fieldValue(parsed, 'doc_no') || '',
     issuer: fieldValue(parsed, 'issuer') || '',
+    fundingSource: fieldValue(parsed, 'funding_source') || '',
     jurisdictionName: fieldValue(parsed, 'jurisdiction_name') || '',
     category: fieldValue(parsed, 'category') || '',
     program: fieldValue(parsed, 'program') || '',
