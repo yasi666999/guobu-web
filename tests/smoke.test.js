@@ -62,10 +62,17 @@ test('注册、提交、审核和发布主流程可运行', async () => {
         policyLevel: 'province',
         issuer: '广东省商务厅',
         jurisdictionName: '广东省',
+        jurisdictionCity: '广州市',
+        jurisdictionDistrict: '天河区',
+        fundingSource: '广东省财政',
+        officialFileName: '广东省家电以旧换新实施细则',
+        docNo: '粤商务〔2026〕1号',
         category: '家电',
         amountType: 'percent',
         rate: 15,
         capAmount: 1000,
+        ruleText: '按销售价格的15%补贴',
+        ruleType: 'percentage',
         effectiveFrom: '2026-04-01',
         effectiveTo: '2026-12-31',
         sourceUrl: 'https://example.com/policy.html',
@@ -100,6 +107,19 @@ test('注册、提交、审核和发布主流程可运行', async () => {
     const policies = await request('/api/policies');
     assert.equal(policies.body.policies.length, 1);
     assert.equal(policies.body.policies[0].rate, 15);
+    assert.equal(policies.body.policies[0].fundingSource, '广东省财政');
+    assert.equal(policies.body.policies[0].officialFileName, '广东省家电以旧换新实施细则');
+    assert.equal(policies.body.policies[0].ruleText, '按销售价格的15%补贴');
+
+    const policyId = policies.body.policies[0].id;
+    const editedPolicy = await request(`/api/policies/${policyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: '广东省2026年家电以旧换新实施细则（已编辑）', capAmount: 1200 }),
+    });
+    assert.equal(editedPolicy.response.status, 200);
+    const editedRow = db.prepare('SELECT title, cap_amount FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id WHERE p.id = ?').get(policyId);
+    assert.equal(editedRow.title, '广东省2026年家电以旧换新实施细则（已编辑）');
+    assert.equal(editedRow.cap_amount, 1200);
 
     const documentId = randomUUID();
     const parsed = {

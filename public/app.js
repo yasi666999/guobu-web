@@ -20,6 +20,7 @@ const state = {
   filters: { province: '', city: '', district: '', category: '', q: '', status: 'active', verification: '' },
   editingSourceId: null,
   preview: null,
+  policyEditor: null,
   policyQuery: '',
   selected: null,
   filter: '',
@@ -133,10 +134,14 @@ function renderAuth() {
 }
 
 function navItems() {
+  const pending = state.contributions.filter((item) => ['submitted', 'in_review'].includes(item.status)).length;
   return [
-    ['sources', '数据源', state.sources.length],
-    ['collect', '网页采集', ''],
-    ['source-dashboard', '已有数据源看板', state.policies.length],
+    ['collect', '网址采集', ''],
+    ['upload', '文件上传识别', ''],
+    ['manual', '手动填写入库', ''],
+    ['review', '待审核 / 入库', pending],
+    ['source-dashboard', '已入库数据看板', state.policies.length],
+    ['sources', '定时抓取任务', state.sources.length],
   ];
 }
 
@@ -357,7 +362,7 @@ function renderInterpretationPreview(document) {
   return `
     <section class="card">
       <div class="card-title"><div><h2>网站解读展览</h2><p>先核对下方识别结果，再按项目字段人工修正并导入数据库。</p></div><div class="list-actions"><span class="badge ${relevance.isRelated ? 'approved' : 'rejected'}">${esc(levelLabel)} · ${esc(relevance.score || 0)} 分</span><span class="badge processed">置信度 ${esc(relevance.confidence ?? '—')}</span></div></div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴区县</th><th>补贴比例 / 满减规则</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody><tr>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴区县</th><th>补贴比例 / 满减规则</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th><th>操作</th></tr></thead><tbody><tr>
         <td class="mono">${esc(String(document.id || '').slice(0, 8))}</td>
         <td><div class="title">${esc(fieldValue('title') || document.title || '—')}</div></td>
         <td>${esc(fieldValue('funding_source', '未在原文中明确'))}</td>
@@ -419,6 +424,16 @@ function renderCollectV2() {
         <button class="btn primary" type="submit">识别并生成预展</button>
       </form>
     </section>
+    <div class="grid two">
+      <section class="card">
+        <div class="card-title"><div><h2>文件上传自动识别</h2><p>上传 PDF / Word / HTML / TXT，系统自动解析并生成可编辑预展。</p></div></div>
+        <div class="actions"><button class="btn primary" data-action="nav" data-view="upload">进入文件上传识别</button></div>
+      </section>
+      <section class="card">
+        <div class="card-title"><div><h2>手动填写入库</h2><p>没有文件时直接填写补贴字段，保存后编辑核对并审核入库。</p></div></div>
+        <div class="actions"><button class="btn" data-action="nav" data-view="manual">进入手动填写入库</button></div>
+      </section>
+    </div>
     ${renderInterpretationPreview(state.preview)}
     <section class="card">
       <div class="card-title"><div><h2>最近采集页面</h2><p>${recent.length} 条最近快照</p></div></div>
@@ -467,43 +482,86 @@ function renderSourceDashboard() {
     <section class="card">
       <div class="card-title"><div><h2>已入库相关内容</h2><p>按省市区、品类和相关内容筛选后的政策列表。</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴区县</th><th>补贴比例 / 满减规则</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}<div class="meta"><span class="badge ${item.verificationStatus === 'verified' ? 'approved' : 'draft'}">${item.verificationStatus === 'verified' ? '已核验' : '待核验'}</span></div>${item.verificationStatus === 'verified' ? '' : `<button class="btn small" data-action="verify-policy" data-id="${esc(item.id)}">确认</button>`}</td><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.documentType || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}${item.description ? `<div class="meta">${esc(item.description)}</div>` : ''}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${esc(item.geo?.district || '—')}</td><td>${esc(item.ruleText || (item.rate != null ? `${item.rate}%` : '—'))}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}${item.endNote ? `<div class="meta">${esc(item.endNote)}</div>` : ''}</td><td><div class="title">${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">文号：${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">打开原文</a>` : '<span class="muted">待核验</span>'}</td></tr>`).join('') : '<tr><td colspan="12" class="empty">没有匹配内容。</td></tr>'}
+      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}<div class="meta"><span class="badge ${item.verificationStatus === 'verified' ? 'approved' : 'draft'}">${item.verificationStatus === 'verified' ? '已核验' : '待核验'}</span></div>${item.verificationStatus === 'verified' ? '' : `<button class="btn small" data-action="verify-policy" data-id="${esc(item.id)}">确认</button>`}</td><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.documentType || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}${item.description ? `<div class="meta">${esc(item.description)}</div>` : ''}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${esc(item.geo?.district || '—')}</td><td>${esc(item.ruleText || (item.rate != null ? `${item.rate}%` : '—'))}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}${item.endNote ? `<div class="meta">${esc(item.endNote)}</div>` : ''}</td><td><div class="title">${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">文号：${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">打开原文</a>` : '<span class="muted">待核验</span>'}</td><td><button class="btn small" data-action="edit-policy" data-id="${esc(item.id)}">编辑</button></td></tr>`).join('') : '<tr><td colspan="13" class="empty">没有匹配内容。</td></tr>'}
       </tbody></table></div>
     </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }
 
+function renderUpload() {
+  const uploaded = state.documents.filter((doc) => doc.contributionId).slice(0, 12);
+  return shell(`
+    <div class="grid two">
+      <section class="card">
+        <div class="card-title"><div><h2>文件上传自动识别</h2><p>上传 PDF / Word / HTML / TXT / CSV / JSON，系统自动解析并生成可编辑预展。</p></div></div>
+        <form id="upload-form" class="form-grid">
+          <div class="field full"><label>选择文件</label><input name="file" type="file" accept=".pdf,.doc,.docx,.html,.htm,.txt,.csv,.json" required></div>
+          <div class="field"><label>文件标题（可选）</label><input name="title" placeholder="例如：广东省2026年家电以旧换新实施细则"></div>
+          <div class="field"><label>官方来源链接（可选）</label><input name="sourceUrl" type="url" placeholder="https://...gov.cn/..."></div>
+          <div class="field full"><label>补充说明（可选）</label><textarea name="notes" placeholder="记录文件来源、口径差异、待核验事项。"></textarea></div>
+          <div class="full actions"><button class="btn primary" type="submit">上传并生成可编辑识别结果</button></div>
+        </form>
+        <div class="notice" style="margin-top:14px">上传后不会直接入库。先检查识别结果，人工修正字段，再点击“提交审核”或“审核并入库”。</div>
+      </section>
+      <section class="card">
+        <div class="card-title"><div><h2>识别入库怎么走</h2><p>三步完成。</p></div></div>
+        <div class="list">
+          <div class="list-item"><div><h3>1. 上传文件</h3><p>系统保留原始文件、哈希和解析证据。</p></div></div>
+          <div class="list-item"><div><h3>2. 编辑识别结果</h3><p>修正补贴名称、地区、金额、比例、日期和官方文件。</p></div></div>
+          <div class="list-item"><div><h3>3. 审核并入库</h3><p>在“待审核 / 入库”里点“审核并入库”，随后到“已入库数据看板”继续编辑。</p></div></div>
+        </div>
+      </section>
+    </div>
+    <section class="card">
+      <div class="card-title"><div><h2>最近上传的识别结果</h2><p>点击“编辑识别结果”修正字段，再审核入库。</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>文件 / 标题</th><th>识别结果</th><th>解析状态</th><th>上传时间</th><th>操作</th></tr></thead><tbody>
+      ${uploaded.length ? uploaded.map((doc) => `<tr><td><div class="title">${esc(doc.title || doc.rawPath || '未命名文件')}</div><div class="meta truncate">${esc(doc.rawPath || doc.url || '')}</div></td><td>${doc.extracted?.relevance ? `<span class="badge ${doc.extracted.relevance.isRelated ? 'approved' : 'rejected'}">${esc(doc.extracted.relevance.score || 0)} 分</span><div class="meta">${esc(doc.extracted.relevance.documentType || 'unknown')}</div>` : '—'}</td><td>${badge(doc.status)}</td><td>${formatTime(doc.createdAt)}</td><td><button class="btn small primary" data-action="view-contribution" data-id="${esc(doc.contributionId)}">编辑识别结果</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty">还没有上传文件。</td></tr>'}
+      </tbody></table></div>
+    </section>`, '文件上传识别', '上传文件 → 自动解析 → 人工修正 → 审核入库。');
+}
+
 function renderContributions() {
   const list = state.contributions.filter((item) => !state.filter || item.status === state.filter || item.title.includes(state.filter));
+  const selected = (value, target) => String(value ?? '') === String(target ?? '') ? 'selected' : '';
   return shell(`
     <section class="card">
-      <div class="card-title"><div><h2>补充一条政策</h2><p>可先存草稿；提交后进入审核队列，金额和日期会被规则校验。</p></div></div>
+      <div class="card-title"><div><h2>手动填写入库</h2><p>没有现成文件时直接填写。保存到待审核后可继续编辑，点击“审核并入库”才会写入正式库。</p></div></div>
       <form id="contribution-form" class="form-grid">
-        <div class="field full"><label>政策标题</label><input name="title" required placeholder="例如：广东省2026年家电以旧换新实施细则"></div>
+        <div class="field full"><label>补贴名称</label><input name="title" required placeholder="例如：广东省2026年家电以旧换新实施细则"></div>
         <div class="field"><label>政策主题</label><input name="program" placeholder="消费品以旧换新"></div>
         <div class="field"><label>政策层级</label><select name="policyLevel"><option value="">待确认</option><option value="national">国家级</option><option value="province">省级</option><option value="city">市级</option><option value="district">区县级</option><option value="other">其他</option></select></div>
-        <div class="field"><label>发布机关</label><input name="issuer" placeholder="广东省商务厅"></div>
-        <div class="field"><label>适用地区</label><input name="jurisdictionName" placeholder="广东省 / 广州市"></div>
-        <div class="field"><label>地区编码</label><input name="jurisdictionCode" placeholder="可选"></div>
-        <div class="field"><label>适用品类</label><input name="category" placeholder="家电、汽车、数码"></div>
-        <div class="field"><label>金额类型</label><select name="amountType"><option value="unknown">待确认</option><option value="percent">按比例</option><option value="fixed">固定金额</option><option value="tiered">分档金额</option><option value="other">其他</option></select></div>
+        <div class="field"><label>发布机关</label><input name="issuer" placeholder="例如：广东省商务厅"></div>
+        <div class="field"><label>资金来源</label><input name="fundingSource" placeholder="例如：中央财政、省级财政、区级财政"></div>
+        <div class="field"><label>官方文件名称</label><input name="officialFileName" placeholder="例如：2026年家电以旧换新实施细则"></div>
+        <div class="field"><label>政策文号</label><input name="docNo" placeholder="例如：商办流通函〔2025〕469号"></div>
+        <div class="field"><label>文件类型</label><select name="documentType"><option value="policy">政策文件</option><option value="implementation">实施细则 / 方案</option><option value="notice">通知 / 公告</option><option value="interpretation">政策解读</option><option value="news">新闻 / 发布会</option><option value="unknown">待确认</option></select></div>
+        <div class="field"><label>补贴省 / 直辖市</label><input name="jurisdictionName" placeholder="例如：广东省、上海市、全国"></div>
+        <div class="field"><label>补贴市</label><input name="jurisdictionCity" placeholder="例如：广州市"></div>
+        <div class="field"><label>补贴区县</label><input name="jurisdictionDistrict" placeholder="例如：宝山区、工业园区"></div>
+        <div class="field"><label>补贴品类</label><input name="category" placeholder="家电、汽车、数码、农机"></div>
+        <div class="field"><label>金额类型</label><select name="amountType"><option value="unknown">待确认</option><option value="percent">按比例</option><option value="fixed">固定金额</option><option value="tiered">分档 / 满减</option><option value="other">其他</option></select></div>
         <div class="field"><label>补贴比例（%）</label><input name="rate" type="number" min="0" max="100" step="0.01"></div>
         <div class="field"><label>固定金额（元）</label><input name="amountValue" type="number" min="0" step="0.01"></div>
-        <div class="field"><label>最高补贴金额（元）</label><input name="capAmount" type="number" min="0" step="0.01"></div>
-        <div class="field"><label>生效日期</label><input name="effectiveFrom" type="date"></div>
-        <div class="field"><label>截止日期</label><input name="effectiveTo" type="date"></div>
-        <div class="field full"><label>官方来源链接</label><input name="sourceUrl" type="url" placeholder="https://..."></div>
-        <div class="field full"><label>原始文件（可选）</label><input name="file" type="file" accept=".pdf,.doc,.docx,.html,.htm,.txt,.csv,.json"><div class="hint">上传后会自动解析候选字段，原文和哈希会保留。</div></div>
-        <div class="field full"><label>补充说明</label><textarea name="notes" placeholder="记录叠加上限、申领条件、适用门店/平台、口径差异等。"></textarea></div>
-        <div class="full"><label class="checkline"><input type="checkbox" name="autoFetch" value="1" checked> 没有上传文件时，尝试从来源链接抓取快照并自动解析</label></div>
-        <div class="full actions"><button class="btn" type="submit" name="mode" value="draft">保存草稿</button><button class="btn primary" type="submit" name="mode" value="submit">保存并提交审核</button></div>
+        <div class="field"><label>补贴上限金额</label><input name="capAmount" type="number" min="0" step="0.01"></div>
+        <div class="field"><label>金额单位</label><input name="capUnit" value="元" placeholder="元/件、元/单"></div>
+        <div class="field full"><label>补贴比例 / 满减规则</label><input name="ruleText" placeholder="例如：15%；满 2000 减 300"></div>
+        <div class="field"><label>规则类型</label><select name="ruleType"><option value="unknown">待确认</option><option value="percentage">按比例</option><option value="fixed">固定金额</option><option value="full_reduction">满减</option></select></div>
+        <div class="field"><label>满减门槛（元）</label><input name="thresholdAmount" type="number" min="0" step="0.01"></div>
+        <div class="field"><label>满减优惠（元）</label><input name="discountAmount" type="number" min="0" step="0.01"></div>
+        <div class="field"><label>每人限制（件/次）</label><input name="perUserLimit" type="number" min="0" step="1"></div>
+        <div class="field"><label>是否可叠加</label><select name="stackable"><option value="">待确认</option><option value="1">可叠加</option><option value="0">不可叠加</option></select></div>
+        <div class="field"><label>开始时间</label><input name="effectiveFrom" type="date"></div>
+        <div class="field"><label>结束时间</label><input name="effectiveTo" type="date"></div>
+        <div class="field full"><label>官方来源链接</label><input name="sourceUrl" type="url" placeholder="https://...gov.cn/..."></div>
+        <div class="field full"><label>领取条件 / 补充说明</label><textarea name="conditionsText" placeholder="记录申领条件、旧机回收、叠加规则、适用门店等。"></textarea></div>
+        <div class="full actions"><button class="btn" type="submit" name="mode" value="draft">保存草稿</button><button class="btn" type="submit" name="mode" value="submit">保存到待审核</button><button class="btn primary" type="submit" name="mode" value="approve">审核并入库</button></div>
       </form>
     </section>
     <section class="card">
-      <div class="card-title"><div><h2>贡献记录</h2><p>${list.length} 条</p></div><div class="topbar-actions"><input id="contribution-filter" value="${esc(state.filter)}" placeholder="筛选标题 / 状态" style="width:220px"><button class="btn small" data-action="clear-filter">清空</button></div></div>
-      <div class="table-wrap"><table><thead><tr><th>政策</th><th>地区 / 品类</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.sourceUrl || '暂无来源链接')}</div></td><td>${esc(item.jurisdictionName || '—')}<div class="meta">${esc(item.category || '—')}</div></td><td>${badge(item.status)}</td><td>${formatTime(item.updatedAt)}</td><td><button class="btn small" data-action="view-contribution" data-id="${esc(item.id)}">查看 / 补充</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty">还没有贡献记录。</td></tr>'}
+      <div class="card-title"><div><h2>手动填写记录</h2><p>${list.length} 条。草稿和待审核记录都可以继续编辑。</p></div><div class="topbar-actions"><input id="contribution-filter" value="${esc(state.filter)}" placeholder="筛选标题 / 状态" style="width:220px"><button class="btn small" data-action="clear-filter">清空</button></div></div>
+      <div class="table-wrap"><table><thead><tr><th>补贴名称</th><th>地区 / 品类</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
+      ${list.length ? list.map((item) => `<tr><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.sourceUrl || '暂无来源链接')}</div></td><td>${esc(item.jurisdictionName || '—')}<div class="meta">${esc(item.category || '—')}</div></td><td>${badge(item.status)}</td><td>${formatTime(item.updatedAt)}</td><td><div class="list-actions"><button class="btn small" data-action="view-contribution" data-id="${esc(item.id)}">编辑</button>${['submitted', 'in_review'].includes(item.status) ? `<button class="btn small primary" data-action="review" data-review="approve" data-id="${esc(item.id)}">审核并入库</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="5" class="empty">还没有手动填写记录。</td></tr>'}
       </tbody></table></div>
-    </section>`, '我的贡献', '多人补充同一政策时，系统会提示潜在重复项并保留各自证据。');
+    </section>`, '手动填写入库', '填写字段 → 保存待审核 → 编辑核对 → 审核并入库。');
 }
 
 function pendingContributions() {
@@ -514,12 +572,16 @@ function renderReview() {
   const rows = pendingContributions();
   return shell(`
     <section class="card">
-      <div class="card-title"><div><h2>审核队列</h2><p>${rows.length} 条待处理。只有审核员和管理员可以处理。</p></div></div>
-      <div class="list">${rows.length ? rows.map((item) => `
-        <div class="list-item"><div><h3>${esc(item.title)}</h3><p>${esc(item.jurisdictionName || '地区待补充')} · ${esc(item.category || '品类待补充')} · ${esc(item.issuer || '发布机关待补充')}</p><p class="small">来源：${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">${esc(item.sourceUrl)}</a>` : '未填写'}</p></div><div class="list-actions">${badge(item.status)}<button class="btn small primary" data-action="view-contribution" data-id="${esc(item.id)}">进入审核</button></div></div>
-      `).join('') : '<div class="empty">当前没有待审核记录。</div>'}</div>
+      <div class="card-title"><div><h2>待审核 / 入库</h2><p>${rows.length} 条待处理。点击“审核并入库”会直接写入正式库，之后仍可在“已入库数据看板”编辑。</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>补贴名称</th><th>地区 / 品类</th><th>来源</th><th>状态</th><th>操作</th></tr></thead><tbody>
+      ${rows.length ? rows.map((item) => `<tr><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.issuer || '发布机关待补充')}</div></td><td>${esc(item.jurisdictionName || '地区待补充')}<div class="meta">${esc(item.category || '品类待补充')}</div></td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">打开来源</a>` : '<span class="muted">无外部来源</span>'}</td><td>${badge(item.status)}</td><td><div class="list-actions"><button class="btn small" data-action="view-contribution" data-id="${esc(item.id)}">编辑核对</button><button class="btn small primary" data-action="review" data-review="approve" data-id="${esc(item.id)}">审核并入库</button></div></td></tr>`).join('') : '<tr><td colspan="5" class="empty">当前没有待审核记录。</td></tr>'}
+      </tbody></table></div>
     </section>
-    <section class="card"><div class="card-title"><div><h2>已发布政策</h2><p>审核通过后会进入这里，并按生效/失效展示。</p></div><button class="btn small" data-action="nav" data-view="dashboard">返回概览</button></div><div id="published-list" class="list"><div class="empty">加载中…</div></div></section>`, '审核队列', '审核动作会写入事件时间线，并保留原始证据。');
+    <section class="card"><div class="card-title"><div><h2>最近入库政策</h2><p>审核通过后进入这里，并可在“已入库数据看板”继续编辑。</p></div><button class="btn small" data-action="nav" data-view="source-dashboard">打开已入库数据看板</button></div>
+      <div class="table-wrap"><table><thead><tr><th>补贴名称</th><th>地区</th><th>品类</th><th>状态</th><th>操作</th></tr></thead><tbody>
+      ${state.policies.slice(0, 10).map((item) => `<tr><td><div class="title">${esc(item.title)}</div></td><td>${esc(item.geo?.province || item.jurisdictionName || '—')}<div class="meta">${esc(item.geo?.city || '')}${item.geo?.district ? ` · ${esc(item.geo.district)}` : ''}</div></td><td>${esc(item.category || '—')}</td><td><span class="badge ${item.verificationStatus === 'verified' ? 'approved' : 'draft'}">${item.verificationStatus === 'verified' ? '已核验' : '待核验'}</span></td><td><button class="btn small" data-action="edit-policy" data-id="${esc(item.id)}">编辑</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty">还没有入库政策。</td></tr>'}
+      </tbody></table></div>
+    </section>`, '待审核 / 入库', '审核动作会写入事件时间线，并保留原始证据。');
 }
 
 function renderDocuments() {
@@ -564,61 +626,114 @@ function renderAdmin() {
 }
 
 function reviewActions(item) {
-  if (!['admin', 'reviewer'].includes(state.user?.role)) return '';
-  if (!['submitted', 'in_review'].includes(item.status)) return '';
+  if (!['draft', 'changes_requested', 'submitted', 'in_review'].includes(item.status)) return '';
   return `<div class="actions">
-    ${item.status === 'submitted' ? '<button class="btn" data-action="review" data-review="start_review" data-id="' + esc(item.id) + '">开始审核</button>' : ''}
-    <button class="btn warn" data-action="review" data-review="request_changes" data-id="${esc(item.id)}">要求修改</button>
+    <button class="btn warn" data-action="review" data-review="request_changes" data-id="${esc(item.id)}">退回修改</button>
     <button class="btn danger" data-action="review" data-review="reject" data-id="${esc(item.id)}">驳回</button>
-    <button class="btn primary" data-action="review" data-review="approve" data-id="${esc(item.id)}">通过并发布</button>
+    <button class="btn primary" data-action="review" data-review="approve" data-id="${esc(item.id)}">审核通过并入库</button>
   </div>`;
 }
 
 function renderDetail() {
   const item = state.selected;
-  if (!item) return shell('<div class="empty">记录不存在。</div>', '贡献详情', '');
+  if (!item) return shell('<div class="empty">记录不存在。</div>', '编辑入库数据', '');
   const validation = item.validation || {};
   const evidence = item.extracted?.evidence || [];
+  const selected = (value, target) => String(value ?? '') === String(target ?? '') ? 'selected' : '';
+  const backView = ['submitted', 'in_review'].includes(item.status) ? 'review' : 'manual';
   return shell(`
-    <div class="actions" style="margin-bottom:16px"><button class="btn small" data-action="nav" data-view="contributions">← 返回贡献列表</button>${badge(item.status)}</div>
-    <div class="detail-grid">
-      <section class="card">
-        <div class="card-title"><div><h2>${esc(item.title)}</h2><p>${esc(item.program || '政策主题待补充')}</p></div></div>
-        <dl class="kv">
-          <dt>适用地区</dt><dd>${esc(item.jurisdictionName || '—')} ${item.jurisdictionCode ? `(${esc(item.jurisdictionCode)})` : ''}</dd>
-          <dt>发布机关</dt><dd>${esc(item.issuer || '—')}</dd>
-          <dt>政策层级</dt><dd>${esc(LEVEL_LABELS[item.policyLevel] || item.policyLevel || '—')}</dd>
-          <dt>适用品类</dt><dd>${esc(item.category || '—')}</dd>
-          <dt>金额规则</dt><dd>${esc(AMOUNT_LABELS[item.amountType] || item.amountType || '—')}${item.rate != null ? ` · ${esc(item.rate)}%` : ''}${item.amountValue != null ? ` · ${esc(item.amountValue)} 元` : ''}${item.capAmount != null ? ` · 上限 ${esc(item.capAmount)} 元` : ''}</dd>
-          <dt>有效期</dt><dd>${esc(item.effectiveFrom || '—')} → ${esc(item.effectiveTo || '—')}</dd>
-          <dt>来源链接</dt><dd>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">${esc(item.sourceUrl)}</a>` : '<span class="muted">未填写</span>'}</dd>
-          <dt>文档状态</dt><dd>${item.document ? `${badge(item.document.status)} <span class="muted small">${esc(item.document.rawPath || '')}</span>` : '<span class="muted">未关联文档</span>'}</dd>
-          <dt>补充说明</dt><dd>${esc(item.notes || '—')}</dd>
-        </dl>
-        ${(validation.errors?.length || validation.warnings?.length) ? `<div style="margin-top:16px" class="grid">${validation.errors?.length ? `<div class="notice error"><strong>错误：</strong>${validation.errors.map(esc).join('；')}</div>` : ''}${validation.warnings?.length ? `<div class="notice warn"><strong>提醒：</strong>${validation.warnings.map(esc).join('；')}</div>` : ''}</div>` : ''}
-        <div class="actions">
-          ${['draft', 'changes_requested'].includes(item.status) && (item.userId === state.user.id || ['admin', 'reviewer'].includes(state.user.role)) ? `<button class="btn primary" data-action="submit-contribution" data-id="${esc(item.id)}">提交审核</button>` : ''}
-          ${item.documentId ? `<button class="btn" data-action="parse-contribution" data-id="${esc(item.id)}">重新解析并补充字段</button>` : ''}
-        </div>
-        ${reviewActions(item)}
-      </section>
-      <section class="card">
-        <div class="card-title"><div><h2>原文证据</h2><p>${evidence.length} 条字段证据</p></div></div>
-        ${evidence.length ? evidence.map((itemEvidence) => `<div class="evidence">${esc(itemEvidence.quote || '')}<small>${esc(itemEvidence.field_name)} · 第 ${esc(itemEvidence.page_number || '?')} 页 · 置信度 ${esc(itemEvidence.confidence ?? '—')}</small></div>`).join('') : '<div class="notice">尚未从文档中抽取出带引文的字段。可以上传原文后重新解析。</div>'}
-      </section>
-    </div>
+    <div class="actions" style="margin-bottom:16px"><button class="btn small" type="button" data-action="nav" data-view="${backView}">← 返回列表</button>${badge(item.status)}</div>
     <section class="card">
-      <div class="card-title"><div><h2>协作讨论</h2><p>贡献者、审核员和后续维护者共享上下文。</p></div></div>
+      <div class="card-title"><div><h2>编辑入库数据</h2><p>先修改字段再保存；确认无误后点击“审核通过并入库”。入库后仍可回到已入库看板继续编辑。</p></div></div>
+      <form id="contribution-edit-form" data-id="${esc(item.id)}" class="form-grid">
+        <div class="field full"><label>补贴名称</label><input name="title" required value="${esc(item.title || '')}"></div>
+        <div class="field"><label>政策主题</label><input name="program" value="${esc(item.program || '')}"></div>
+        <div class="field"><label>政策层级</label><select name="policyLevel"><option value="" ${selected(item.policyLevel, '')}>待确认</option><option value="national" ${selected(item.policyLevel, 'national')}>国家级</option><option value="province" ${selected(item.policyLevel, 'province')}>省级</option><option value="city" ${selected(item.policyLevel, 'city')}>市级</option><option value="district" ${selected(item.policyLevel, 'district')}>区县级</option><option value="other" ${selected(item.policyLevel, 'other')}>其他</option></select></div>
+        <div class="field"><label>发布机关</label><input name="issuer" value="${esc(item.issuer || '')}"></div>
+        <div class="field"><label>资金来源</label><input name="fundingSource" value="${esc(item.fundingSource || '')}"></div>
+        <div class="field"><label>官方文件名称</label><input name="officialFileName" value="${esc(item.officialFileName || item.title || '')}"></div>
+        <div class="field"><label>政策文号</label><input name="docNo" value="${esc(item.docNo || '')}"></div>
+        <div class="field"><label>文件类型</label><select name="documentType"><option value="policy" ${selected(item.documentType, 'policy')}>政策文件</option><option value="implementation" ${selected(item.documentType, 'implementation')}>实施细则 / 方案</option><option value="notice" ${selected(item.documentType, 'notice')}>通知 / 公告</option><option value="interpretation" ${selected(item.documentType, 'interpretation')}>政策解读</option><option value="news" ${selected(item.documentType, 'news')}>新闻 / 发布会</option><option value="unknown" ${selected(item.documentType || 'unknown', 'unknown')}>待确认</option></select></div>
+        <div class="field"><label>补贴省 / 直辖市</label><input name="jurisdictionName" value="${esc(item.jurisdictionName || '')}"></div>
+        <div class="field"><label>补贴市</label><input name="jurisdictionCity" value="${esc(item.jurisdictionCity || '')}"></div>
+        <div class="field"><label>补贴区县</label><input name="jurisdictionDistrict" value="${esc(item.jurisdictionDistrict || '')}"></div>
+        <div class="field"><label>补贴品类</label><input name="category" value="${esc(item.category || '')}"></div>
+        <div class="field"><label>金额类型</label><select name="amountType"><option value="unknown" ${selected(item.amountType || 'unknown', 'unknown')}>待确认</option><option value="percent" ${selected(item.amountType, 'percent')}>按比例</option><option value="fixed" ${selected(item.amountType, 'fixed')}>固定金额</option><option value="tiered" ${selected(item.amountType, 'tiered')}>分档 / 满减</option><option value="other" ${selected(item.amountType, 'other')}>其他</option></select></div>
+        <div class="field"><label>补贴比例（%）</label><input name="rate" type="number" min="0" max="100" step="0.01" value="${esc(item.rate ?? '')}"></div>
+        <div class="field"><label>固定金额（元）</label><input name="amountValue" type="number" min="0" step="0.01" value="${esc(item.amountValue ?? '')}"></div>
+        <div class="field"><label>补贴上限金额</label><input name="capAmount" type="number" min="0" step="0.01" value="${esc(item.capAmount ?? '')}"></div>
+        <div class="field"><label>金额单位</label><input name="capUnit" value="${esc(item.capUnit || '元')}"></div>
+        <div class="field full"><label>补贴比例 / 满减规则</label><input name="ruleText" value="${esc(item.ruleText || '')}"></div>
+        <div class="field"><label>规则类型</label><select name="ruleType"><option value="unknown" ${selected(item.ruleType || 'unknown', 'unknown')}>待确认</option><option value="percentage" ${selected(item.ruleType, 'percentage')}>按比例</option><option value="fixed" ${selected(item.ruleType, 'fixed')}>固定金额</option><option value="full_reduction" ${selected(item.ruleType, 'full_reduction')}>满减</option></select></div>
+        <div class="field"><label>满减门槛（元）</label><input name="thresholdAmount" type="number" min="0" step="0.01" value="${esc(item.thresholdAmount ?? '')}"></div>
+        <div class="field"><label>满减优惠（元）</label><input name="discountAmount" type="number" min="0" step="0.01" value="${esc(item.discountAmount ?? '')}"></div>
+        <div class="field"><label>每人限制（件/次）</label><input name="perUserLimit" type="number" min="0" step="1" value="${esc(item.perUserLimit ?? '')}"></div>
+        <div class="field"><label>是否可叠加</label><select name="stackable"><option value="" ${item.stackable == null ? 'selected' : ''}>待确认</option><option value="1" ${item.stackable === 1 ? 'selected' : ''}>可叠加</option><option value="0" ${item.stackable === 0 ? 'selected' : ''}>不可叠加</option></select></div>
+        <div class="field"><label>开始时间</label><input name="effectiveFrom" type="date" value="${esc(item.effectiveFrom || '')}"></div>
+        <div class="field"><label>结束时间</label><input name="effectiveTo" type="date" value="${esc(item.effectiveTo || '')}"></div>
+        <div class="field full"><label>官方来源链接</label><input name="sourceUrl" type="url" value="${esc(item.sourceUrl || '')}"></div>
+        <div class="field full"><label>领取条件 / 补充说明</label><textarea name="conditionsText">${esc(item.conditionsText || item.description || item.notes || '')}</textarea></div>
+        <div class="full actions"><button class="btn primary" type="submit">保存修改</button>${item.documentId ? `<button class="btn" type="button" data-action="parse-contribution" data-id="${esc(item.id)}">重新解析并补充字段</button>` : ''}</div>
+      </form>
+      ${(validation.errors?.length || validation.warnings?.length) ? `<div style="margin-top:16px" class="grid">${validation.errors?.length ? `<div class="notice error"><strong>错误：</strong>${validation.errors.map(esc).join('；')}</div>` : ''}${validation.warnings?.length ? `<div class="notice warn"><strong>提醒：</strong>${validation.warnings.map(esc).join('；')}</div>` : ''}</div>` : ''}
+      ${reviewActions(item)}
+    </section>
+    <section class="card">
+      <div class="card-title"><div><h2>原文证据</h2><p>${evidence.length} 条字段证据</p></div></div>
+      ${evidence.length ? evidence.map((itemEvidence) => `<div class="evidence">${esc(itemEvidence.quote || '')}<small>${esc(itemEvidence.field_name)} · 第 ${esc(itemEvidence.page_number || '?')} 页 · 置信度 ${esc(itemEvidence.confidence ?? '—')}</small></div>`).join('') : '<div class="notice">尚未从文档中抽取出带引文的字段。可以上传原文后重新解析。</div>'}
+    </section>
+    <section class="card">
+      <div class="card-title"><div><h2>协作讨论</h2><p>记录修改原因、口径疑问和核验结论。</p></div></div>
       <form id="comment-form" class="grid"><textarea name="body" placeholder="补充口径、指出疑点或说明修改原因"></textarea><div><button class="btn primary" type="submit">发表评论</button></div></form>
       <div class="list" style="margin-top:16px">${(item.comments || []).length ? item.comments.map((comment) => `<div class="list-item"><div><strong>${esc(comment.userName)}</strong><p>${esc(comment.body)}</p></div><small class="muted">${formatTime(comment.createdAt)}</small></div>`).join('') : '<div class="empty">还没有评论。</div>'}</div>
     </section>
-    <section class="card"><div class="card-title"><div><h2>事件时间线</h2><p>谁在什么时候做了什么。</p></div></div><div class="timeline">${(item.events || []).map((event) => `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(event.action)}</strong> <span class="muted">${esc(event.userName || '系统')} · ${formatTime(event.createdAt)}</span>${event.detail?.comment ? `<p>${esc(event.detail.comment)}</p>` : ''}</div></div>`).join('') || '<div class="empty">暂无事件。</div>'}</div></section>`, '贡献详情', '查看字段、证据、讨论与审核状态。');
+    <section class="card"><div class="card-title"><div><h2>事件时间线</h2><p>谁在什么时候做了什么。</p></div></div><div class="timeline">${(item.events || []).map((event) => `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(event.action)}</strong> <span class="muted">${esc(event.userName || '系统')} · ${formatTime(event.createdAt)}</span>${event.detail?.comment ? `<p>${esc(event.detail.comment)}</p>` : ''}</div></div>`).join('') || '<div class="empty">暂无事件。</div>'}</div></section>`, '编辑入库数据', '先修正字段，再审核通过并入库。');
+}
+
+function renderPolicyEdit() {
+  const item = state.policyEditor;
+  if (!item) return shell('<div class="empty">政策记录不存在。</div>', '编辑已入库数据', '');
+  const selected = (value, target) => String(value ?? '') === String(target ?? '') ? 'selected' : '';
+  return shell(`
+    <div class="actions" style="margin-bottom:16px"><button class="btn small" type="button" data-action="nav" data-view="source-dashboard">← 返回已入库数据看板</button><span class="badge ${item.verificationStatus === 'verified' ? 'approved' : 'draft'}">${item.verificationStatus === 'verified' ? '已核验' : '待核验'}</span></div>
+    <section class="card">
+      <div class="card-title"><div><h2>编辑已入库数据</h2><p>保存后会同步更新正式政策和补贴规则，不需要重新审核。</p></div></div>
+      <form id="policy-edit-form" data-id="${esc(item.id)}" class="form-grid">
+        <div class="field full"><label>补贴名称</label><input name="title" required value="${esc(item.title || '')}"></div>
+        <div class="field"><label>资金来源</label><input name="fundingSource" value="${esc(item.fundingSource || '')}"></div>
+        <div class="field"><label>补贴品类</label><input name="category" value="${esc(item.category || '')}"></div>
+        <div class="field"><label>补贴省 / 直辖市</label><input name="jurisdictionName" value="${esc(item.geo?.province || item.jurisdictionName || '')}"></div>
+        <div class="field"><label>补贴市</label><input name="jurisdictionCity" value="${esc(item.geo?.city || item.jurisdictionCity || '')}"></div>
+        <div class="field"><label>补贴区县</label><input name="jurisdictionDistrict" value="${esc(item.geo?.district || item.jurisdictionDistrict || '')}"></div>
+        <div class="field"><label>补贴比例（%）</label><input name="rate" type="number" min="0" max="100" step="0.01" value="${esc(item.rate ?? '')}"></div>
+        <div class="field full"><label>补贴比例 / 满减规则</label><input name="ruleText" value="${esc(item.ruleText || '')}"></div>
+        <div class="field"><label>补贴上限金额</label><input name="capAmount" type="number" min="0" step="0.01" value="${esc(item.capAmount ?? '')}"></div>
+        <div class="field"><label>金额单位</label><input name="capUnit" value="${esc(item.capUnit || '元')}"></div>
+        <div class="field"><label>开始时间</label><input name="effectiveFrom" type="date" value="${esc(item.effectiveFrom || '')}"></div>
+        <div class="field"><label>结束时间</label><input name="effectiveTo" type="date" value="${esc(item.effectiveTo || '')}"></div>
+        <div class="field"><label>金额类型</label><select name="amountType"><option value="unknown" ${selected(item.amountType || 'unknown', 'unknown')}>待确认</option><option value="percent" ${selected(item.amountType, 'percent')}>按比例</option><option value="fixed" ${selected(item.amountType, 'fixed')}>固定金额</option><option value="tiered" ${selected(item.amountType, 'tiered')}>分档 / 满减</option><option value="other" ${selected(item.amountType, 'other')}>其他</option></select></div>
+        <div class="field"><label>规则类型</label><select name="ruleType"><option value="unknown" ${selected(item.ruleType || 'unknown', 'unknown')}>待确认</option><option value="percentage" ${selected(item.ruleType, 'percentage')}>按比例</option><option value="fixed" ${selected(item.ruleType, 'fixed')}>固定金额</option><option value="full_reduction" ${selected(item.ruleType, 'full_reduction')}>满减</option></select></div>
+        <div class="field"><label>官方文件名称</label><input name="officialFileName" value="${esc(item.officialFileName || item.title || '')}"></div>
+        <div class="field"><label>政策文号</label><input name="docNo" value="${esc(item.docNo || '')}"></div>
+        <div class="field"><label>发布机关</label><input name="issuer" value="${esc(item.issuer || '')}"></div>
+        <div class="field"><label>文件类型</label><select name="documentType"><option value="policy" ${selected(item.documentType, 'policy')}>政策文件</option><option value="implementation" ${selected(item.documentType, 'implementation')}>实施细则 / 方案</option><option value="notice" ${selected(item.documentType, 'notice')}>通知 / 公告</option><option value="interpretation" ${selected(item.documentType, 'interpretation')}>政策解读</option><option value="news" ${selected(item.documentType, 'news')}>新闻 / 发布会</option><option value="unknown" ${selected(item.documentType || 'unknown', 'unknown')}>待确认</option></select></div>
+        <div class="field full"><label>官方来源链接</label><input name="sourceUrl" type="url" value="${esc(item.sourceUrl || '')}"></div>
+        <div class="field full"><label>补充说明 / 领取条件</label><textarea name="conditionsText">${esc(item.description || '')}</textarea></div>
+        <div class="field"><label>核验状态</label><select name="verificationStatus"><option value="pending" ${item.verificationStatus !== 'verified' ? 'selected' : ''}>待核验</option><option value="verified" ${item.verificationStatus === 'verified' ? 'selected' : ''}>已核验</option></select></div>
+        <div class="full actions"><button class="btn primary" type="submit">保存已入库数据</button></div>
+      </form>
+    </section>`, '编辑已入库数据', `ID：${item.id}`);
 }
 
 function render() {
   if (!state.user) return renderAuth();
   if (state.view === 'sources') app.innerHTML = renderSourcesV2();
   else if (state.view === 'source-dashboard') app.innerHTML = renderSourceDashboard();
+  else if (state.view === 'upload') app.innerHTML = renderUpload();
+  else if (state.view === 'manual' || state.view === 'contributions') app.innerHTML = renderContributions();
+  else if (state.view === 'review') app.innerHTML = renderReview();
+  else if (state.view === 'detail') app.innerHTML = renderDetail();
+  else if (state.view === 'policy-edit') app.innerHTML = renderPolicyEdit();
   else app.innerHTML = renderCollectV2();
 }
 
@@ -646,6 +761,7 @@ async function handleAction(action, target) {
   if (action === 'nav') {
     state.view = target.dataset.view;
     state.selected = null;
+    state.policyEditor = null;
     render();
     return;
   }
@@ -656,6 +772,14 @@ async function handleAction(action, target) {
       state.view = 'collect';
       render();
     } catch (error) { toast(error.message, 'error'); }
+    return;
+  }
+  if (action === 'edit-policy') {
+    const policy = state.policies.find((item) => item.id === target.dataset.id);
+    if (!policy) { toast('没有找到这条已入库数据', 'error'); return; }
+    state.policyEditor = policy;
+    state.view = 'policy-edit';
+    render();
     return;
   }
   if (action === 'edit-source') {
@@ -815,7 +939,7 @@ async function handleAction(action, target) {
   }
   if (action === 'submit-contribution') {
     target.disabled = true;
-    try { const result = await api(`/api/contributions/${target.dataset.id}/submit`, { method: 'POST' }); state.selected = result.contribution; toast('已提交审核', 'success'); await refresh(); render(); }
+    try { const result = await api(`/api/contributions/${target.dataset.id}/submit`, { method: 'POST' }); state.selected = result.contribution; toast('已保存到待审核', 'success'); await refresh(); render(); }
     catch (error) { toast(error.message, 'error'); target.disabled = false; }
     return;
   }
@@ -824,8 +948,19 @@ async function handleAction(action, target) {
     const comment = ['request_changes', 'reject'].includes(review) ? window.prompt(review === 'reject' ? '填写驳回原因' : '填写需要修改的内容') : '';
     if (['request_changes', 'reject'].includes(review) && !comment) return;
     target.disabled = true;
-    try { const result = await api(`/api/contributions/${target.dataset.id}/review`, { method: 'POST', body: { action: review, comment } }); state.selected = result.contribution; toast(review === 'approve' ? '已通过并发布' : '审核状态已更新', 'success'); await refresh(); render(); }
-    catch (error) { toast(error.message, 'error'); target.disabled = false; }
+    try {
+      const result = await api(`/api/contributions/${target.dataset.id}/review`, { method: 'POST', body: { action: review, comment } });
+      state.selected = result.contribution;
+      await refresh();
+      if (review === 'approve') {
+        toast('已审核并入库，可以在已入库数据看板继续编辑', 'success');
+        state.view = 'source-dashboard';
+      } else {
+        toast('审核状态已更新', 'success');
+      }
+      render();
+    } catch (error) { toast(error.message, 'error'); target.disabled = false; }
+    return;
   }
 }
 
@@ -883,15 +1018,60 @@ app.addEventListener('submit', async (event) => {
       const formData = new FormData(form);
       const file = formData.get('file');
       const title = formData.get('title') || file?.name || '人工上传文档';
-      const created = await api('/api/contributions', { method: 'POST', body: (() => { const body = new FormData(); body.set('title', title); body.set('notes', '人工上传'); body.set('file', file); return body; })() });
-      toast('文件已上传并创建贡献草稿', 'success'); state.selected = created.contribution; state.view = 'detail'; await refresh(); render(); return;
+      const body = new FormData();
+      body.set('title', title);
+      body.set('notes', formData.get('notes') || '人工上传');
+      if (formData.get('sourceUrl')) body.set('sourceUrl', formData.get('sourceUrl'));
+      body.set('file', file);
+      const created = await api('/api/contributions', { method: 'POST', body });
+      toast('文件已上传并完成自动识别，请核对字段', 'success');
+      state.selected = created.contribution;
+      state.view = 'detail';
+      await refresh();
+      render();
+      return;
     }
     if (form.id === 'contribution-form') {
       const formData = new FormData(form);
       const mode = event.submitter?.value || 'draft';
-      if (mode === 'submit') formData.set('submit', '1');
+      if (mode === 'submit' || mode === 'approve') formData.set('submit', '1');
       const data = await api('/api/contributions', { method: 'POST', body: formData });
-      toast(mode === 'submit' ? '已保存并提交审核' : '草稿已保存', 'success'); state.selected = data.contribution; state.view = 'detail'; await refresh(); render(); return;
+      let contribution = data.contribution;
+      if (mode === 'approve') {
+        const approved = await api(`/api/contributions/${contribution.id}/review`, { method: 'POST', body: { action: 'approve' } });
+        contribution = approved.contribution;
+        state.selected = contribution;
+        await refresh();
+        toast('已审核并入库，可以在已入库数据看板继续编辑', 'success');
+        state.view = 'source-dashboard';
+        render();
+        return;
+      }
+      toast(mode === 'submit' ? '已保存到待审核' : '草稿已保存', 'success');
+      state.selected = contribution;
+      state.view = 'detail';
+      await refresh();
+      render();
+      return;
+    }
+    if (form.id === 'contribution-edit-form') {
+      const formData = new FormData(form);
+      const data = await api(`/api/contributions/${form.dataset.id}`, { method: 'PATCH', body: formData });
+      state.selected = data.contribution;
+      toast('修改已保存', 'success');
+      await refresh();
+      render();
+      return;
+    }
+    if (form.id === 'policy-edit-form') {
+      const formData = new FormData(form);
+      await api(`/api/policies/${form.dataset.id}`, { method: 'PATCH', body: formData });
+      toast('已入库数据已保存', 'success');
+      state.policyEditor = null;
+      await refresh();
+      state.view = 'source-dashboard';
+      render();
+      return;
     }
     if (form.id === 'comment-form') {
       if (!state.selected) return;

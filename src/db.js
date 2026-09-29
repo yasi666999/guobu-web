@@ -50,6 +50,22 @@ function migrateDatabase(db) {
   ensureColumn(db, 'sources', 'interval_minutes', 'INTEGER');
   ensureColumn(db, 'sources', 'last_run_status', 'TEXT');
   ensureColumn(db, 'sources', 'last_error', 'TEXT');
+  ensureColumn(db, 'contributions', 'funding_source', 'TEXT');
+  ensureColumn(db, 'contributions', 'cap_unit', 'TEXT');
+  ensureColumn(db, 'contributions', 'official_file_name', 'TEXT');
+  ensureColumn(db, 'contributions', 'doc_no', 'TEXT');
+  ensureColumn(db, 'contributions', 'description', 'TEXT');
+  ensureColumn(db, 'contributions', 'end_note', 'TEXT');
+  ensureColumn(db, 'contributions', 'document_type', 'TEXT');
+  ensureColumn(db, 'contributions', 'jurisdiction_city', 'TEXT');
+  ensureColumn(db, 'contributions', 'jurisdiction_district', 'TEXT');
+  ensureColumn(db, 'contributions', 'rule_text', 'TEXT');
+  ensureColumn(db, 'contributions', 'rule_type', 'TEXT');
+  ensureColumn(db, 'contributions', 'threshold_amount', 'REAL');
+  ensureColumn(db, 'contributions', 'discount_amount', 'REAL');
+  ensureColumn(db, 'contributions', 'per_user_limit', 'INTEGER');
+  ensureColumn(db, 'contributions', 'stackable', 'INTEGER');
+  ensureColumn(db, 'contributions', 'conditions_text', 'TEXT');
   ensureColumn(db, 'policies', 'funding_source', 'TEXT');
   ensureColumn(db, 'policies', 'official_file_name', 'TEXT');
   ensureColumn(db, 'policies', 'doc_no', 'TEXT');
@@ -124,15 +140,29 @@ export function contributionView(row, db) {
     program: row.program,
     policyLevel: row.policy_level,
     issuer: row.issuer,
+    fundingSource: row.funding_source,
+    officialFileName: row.official_file_name,
+    docNo: row.doc_no,
+    description: row.description,
+    endNote: row.end_note,
+    documentType: row.document_type,
     jurisdictionCode: row.jurisdiction_code,
     jurisdictionName: row.jurisdiction_name,
-    category: row.category,
-    keywords: row.keywords,
+    jurisdictionCity: row.jurisdiction_city,
+    jurisdictionDistrict: row.jurisdiction_district,
     category: row.category,
     amountType: row.amount_type,
     amountValue: row.amount_value,
     rate: row.rate,
     capAmount: row.cap_amount,
+    capUnit: row.cap_unit,
+    ruleText: row.rule_text,
+    ruleType: row.rule_type,
+    thresholdAmount: row.threshold_amount,
+    discountAmount: row.discount_amount,
+    perUserLimit: row.per_user_limit,
+    stackable: row.stackable,
+    conditionsText: row.conditions_text,
     effectiveFrom: row.effective_from,
     effectiveTo: row.effective_to,
     sourceUrl: row.source_url,

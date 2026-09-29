@@ -54,13 +54,29 @@ const CONTRIBUTION_COLUMNS = {
   program: 'program',
   policyLevel: 'policy_level',
   issuer: 'issuer',
+  fundingSource: 'funding_source',
+  officialFileName: 'official_file_name',
+  docNo: 'doc_no',
+  description: 'description',
+  endNote: 'end_note',
+  documentType: 'document_type',
   jurisdictionCode: 'jurisdiction_code',
   jurisdictionName: 'jurisdiction_name',
+  jurisdictionCity: 'jurisdiction_city',
+  jurisdictionDistrict: 'jurisdiction_district',
   category: 'category',
   amountType: 'amount_type',
   amountValue: 'amount_value',
   rate: 'rate',
   capAmount: 'cap_amount',
+  capUnit: 'cap_unit',
+  ruleText: 'rule_text',
+  ruleType: 'rule_type',
+  thresholdAmount: 'threshold_amount',
+  discountAmount: 'discount_amount',
+  perUserLimit: 'per_user_limit',
+  stackable: 'stackable',
+  conditionsText: 'conditions_text',
   effectiveFrom: 'effective_from',
   effectiveTo: 'effective_to',
   sourceUrl: 'source_url',
@@ -162,13 +178,29 @@ function contributionInput(fields = {}) {
     program: fields.program,
     policyLevel: fields.policyLevel || fields.policy_level,
     issuer: fields.issuer,
+    fundingSource: fields.fundingSource || fields.funding_source,
+    officialFileName: fields.officialFileName || fields.official_file_name,
+    docNo: fields.docNo || fields.doc_no,
+    description: fields.description,
+    endNote: fields.endNote || fields.end_note,
+    documentType: fields.documentType || fields.document_type,
     jurisdictionCode: fields.jurisdictionCode || fields.jurisdiction_code,
     jurisdictionName: fields.jurisdictionName || fields.jurisdiction_name,
+    jurisdictionCity: fields.jurisdictionCity || fields.jurisdiction_city,
+    jurisdictionDistrict: fields.jurisdictionDistrict || fields.jurisdiction_district,
     category: fields.category,
     amountType: fields.amountType || fields.amount_type,
     amountValue: fields.amountValue ?? fields.amount_value,
     rate: fields.rate,
     capAmount: fields.capAmount ?? fields.cap_amount,
+    capUnit: fields.capUnit || fields.cap_unit,
+    ruleText: fields.ruleText || fields.rule_text,
+    ruleType: fields.ruleType || fields.rule_type,
+    thresholdAmount: fields.thresholdAmount ?? fields.threshold_amount,
+    discountAmount: fields.discountAmount ?? fields.discount_amount,
+    perUserLimit: fields.perUserLimit ?? fields.per_user_limit,
+    stackable: fields.stackable,
+    conditionsText: fields.conditionsText || fields.conditions_text,
     effectiveFrom: fields.effectiveFrom || fields.effective_from,
     effectiveTo: fields.effectiveTo || fields.effective_to,
     sourceUrl: fields.sourceUrl || fields.source_url,
@@ -186,36 +218,18 @@ function insertContribution(db, user, fields) {
   if (validation.errors.length) throw httpError('贡献数据校验失败', 400, validation.errors);
   const id = newId();
   const timestamp = nowIso();
-  const value = validation.value;
-  db.prepare(`
-    INSERT INTO contributions (
-      id, user_id, status, title, program, policy_level, issuer, jurisdiction_code, jurisdiction_name,
-      category, amount_type, amount_value, rate, cap_amount, effective_from, effective_to,
-      source_url, notes, validation_json, created_at, updated_at
-    ) VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    user.id,
-    value.title,
-    dbValue(value.program),
-    dbValue(value.policyLevel),
-    dbValue(value.issuer),
-    dbValue(value.jurisdictionCode),
-    dbValue(value.jurisdictionName),
-    dbValue(value.category),
-    value.amountType || 'unknown',
-    value.amountValue,
-    value.rate,
-    value.capAmount,
-    dbValue(value.effectiveFrom),
-    dbValue(value.effectiveTo),
-    dbValue(value.sourceUrl),
-    dbValue(value.notes),
-    JSON.stringify(validation),
-    timestamp,
-    timestamp,
-  );
-  addEvent(db, { entityType: 'contribution', entityId: id, actorId: user.id, action: 'created', detail: { title: value.title } });
+  const next = { ...input, ...validation.value };
+  const columns = ['id', 'user_id', 'status'];
+  const values = [id, user.id, 'draft'];
+  for (const [key, column] of Object.entries(CONTRIBUTION_COLUMNS)) {
+    columns.push(column);
+    values.push(dbValue(next[key]));
+  }
+  columns.push('validation_json', 'created_at', 'updated_at');
+  values.push(JSON.stringify(validation), timestamp, timestamp);
+  const placeholders = columns.map(() => '?').join(', ');
+  db.prepare(`INSERT INTO contributions (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+  addEvent(db, { entityType: 'contribution', entityId: id, actorId: user.id, action: 'created', detail: { title: validation.value.title } });
   return getContribution(db, id);
 }
 
@@ -232,20 +246,16 @@ function refreshContributionFromDocument(db, contributionId, documentId, actorId
 function updateContributionFields(db, contributionId, actorId, fields, { mergeOnly = false } = {}) {
   const current = getContribution(db, contributionId);
   if (!current) throw httpError('贡献记录不存在', 404);
-  if (!mergeOnly && !['draft', 'changes_requested'].includes(current.status) && actorId) {
-    const actor = db.prepare('SELECT role FROM users WHERE id = ?').get(actorId);
-    if (!actor || !['admin', 'reviewer'].includes(actor.role)) throw httpError('该状态下的记录只能由审核员修改', 403);
-  }
   const input = contributionInput({ ...contributionView(current, db), ...fields });
   const validation = validateContribution(input);
   if (validation.errors.length) throw httpError('贡献数据校验失败', 400, validation.errors);
-  const value = validation.value;
+  const next = { ...input, ...validation.value };
   const assignments = [];
   const values = [];
   for (const [key, column] of Object.entries(CONTRIBUTION_COLUMNS)) {
     if (!(key in fields) && mergeOnly) continue;
     assignments.push(`${column} = ?`);
-    values.push(dbValue(value[key]));
+    values.push(dbValue(next[key]));
   }
   if (assignments.length) {
     assignments.push('updated_at = ?');
@@ -327,32 +337,65 @@ function publishContribution(db, row, reviewer) {
     if (duplicate?.status === 'approved') throw httpError('发现已发布的重复政策，请先处理重复项', 409, { duplicateId: duplicate.id });
   }
   const timestamp = nowIso();
-  const policyId = newId();
   const status = row.effective_to && row.effective_to < timestamp.slice(0, 10) ? 'expired' : 'active';
+  const geo = inferGeo({
+    jurisdictionName: row.jurisdiction_name,
+    city: row.jurisdiction_city,
+    district: row.jurisdiction_district,
+    title: row.title,
+    sourceUrl: row.source_url,
+  });
+  const jurisdictionName = geo.province || row.jurisdiction_name || '全国';
+  const jurisdictionCity = geo.city || row.jurisdiction_city || '';
+  const jurisdictionDistrict = geo.district || row.jurisdiction_district || '';
+  const officialFileName = row.official_file_name || row.title;
+  const docNo = row.doc_no || '';
+  const fundingSource = row.funding_source || '';
+  const description = row.description || row.conditions_text || row.notes || '';
+  const endNote = row.end_note || '';
+  const documentType = row.document_type || 'unknown';
+  const ruleText = row.rule_text || '';
+  const ruleType = row.rule_type || (/满\s*\d+.*减\s*\d+/.test(ruleText) ? 'full_reduction' : row.rate != null ? 'percentage' : row.amount_value != null ? 'fixed' : 'unknown');
+  const policyId = newId();
   db.exec('BEGIN IMMEDIATE');
   try {
     db.prepare(`
       INSERT INTO policies (
-        id, contribution_id, title, program, policy_level, issuer, jurisdiction_code, jurisdiction_name,
+        id, contribution_id, title, official_file_name, doc_no, program, policy_level, issuer,
+        funding_source, description, end_note, document_type, verification_status,
+        jurisdiction_code, jurisdiction_name, jurisdiction_city, jurisdiction_district,
         status, effective_from, effective_to, source_url, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(contribution_id) DO UPDATE SET
-        title = excluded.title, program = excluded.program, policy_level = excluded.policy_level,
-        issuer = excluded.issuer, jurisdiction_code = excluded.jurisdiction_code,
-        jurisdiction_name = excluded.jurisdiction_name, status = excluded.status,
+        title = excluded.title, official_file_name = excluded.official_file_name, doc_no = excluded.doc_no,
+        program = excluded.program, policy_level = excluded.policy_level, issuer = excluded.issuer,
+        funding_source = excluded.funding_source, description = excluded.description, end_note = excluded.end_note,
+        document_type = excluded.document_type, jurisdiction_code = excluded.jurisdiction_code,
+        jurisdiction_name = excluded.jurisdiction_name, jurisdiction_city = excluded.jurisdiction_city,
+        jurisdiction_district = excluded.jurisdiction_district, status = excluded.status,
         effective_from = excluded.effective_from, effective_to = excluded.effective_to,
         source_url = excluded.source_url, updated_at = excluded.updated_at
     `).run(
-      policyId, row.id, row.title, row.program, row.policy_level, row.issuer, row.jurisdiction_code,
-      row.jurisdiction_name, status, row.effective_from, row.effective_to, row.source_url, timestamp, timestamp,
+      policyId, row.id, row.title, officialFileName, docNo, row.program, row.policy_level, row.issuer,
+      fundingSource, description, endNote, documentType, row.jurisdiction_code, jurisdictionName,
+      jurisdictionCity, jurisdictionDistrict, status, row.effective_from, row.effective_to,
+      row.source_url, timestamp, timestamp,
     );
     const existingPolicy = db.prepare('SELECT id FROM policies WHERE contribution_id = ?').get(row.id);
     const effectivePolicyId = existingPolicy?.id || policyId;
     db.prepare('DELETE FROM subsidy_rules WHERE policy_id = ?').run(effectivePolicyId);
     db.prepare(`
-      INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, conditions_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(newId(), effectivePolicyId, row.category, row.amount_type, row.rate, row.amount_value, row.cap_amount, null, timestamp);
+      INSERT INTO subsidy_rules (
+        id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, cap_unit, rule_text,
+        rule_type, threshold_amount, discount_amount, per_user_limit, stackable, conditions_text,
+        conditions_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      newId(), effectivePolicyId, row.category, row.amount_type, row.rate, row.amount_value, row.cap_amount,
+      row.cap_unit || '元', ruleText, ruleType, row.threshold_amount, row.discount_amount,
+      row.per_user_limit, row.stackable, row.conditions_text || description || '',
+      JSON.stringify({ contributionId: row.id }), timestamp,
+    );
     db.prepare('DELETE FROM evidence WHERE policy_id = ?').run(effectivePolicyId);
     const parsed = parseJson(row.extracted_json, null) || (row.document_id ? documentExtractionJson(getDocument(db, row.document_id)) : null);
     const evidence = parsed?.evidence || [];
@@ -369,6 +412,11 @@ function publishContribution(db, row, reviewer) {
         INSERT INTO evidence (id, policy_id, document_id, field_name, quote, page_number, confidence, created_at)
         VALUES (?, ?, ?, 'source_url', ?, NULL, NULL, ?)
       `).run(newId(), effectivePolicyId, row.document_id || null, row.source_url, timestamp);
+    } else {
+      db.prepare(`
+        INSERT INTO evidence (id, policy_id, document_id, field_name, quote, page_number, confidence, created_at)
+        VALUES (?, ?, ?, 'manual_review', '人工填写后审核入库，待官方来源核验', NULL, NULL, ?)
+      `).run(newId(), effectivePolicyId, row.document_id || null, timestamp);
     }
     db.prepare('UPDATE contributions SET status = ?, reviewer_id = ?, reviewed_at = ?, updated_at = ? WHERE id = ?')
       .run('approved', reviewer.id, timestamp, timestamp, row.id);
@@ -607,10 +655,6 @@ function listContributions(db, user, url) {
   const values = [];
   const status = url.searchParams.get('status');
   const query = url.searchParams.get('q');
-  if (!['admin', 'reviewer'].includes(user.role)) {
-    filters.push("(user_id = ? OR status IN ('submitted', 'in_review', 'approved'))");
-    values.push(user.id);
-  }
   if (status) {
     filters.push('status = ?');
     values.push(status);
@@ -883,7 +927,11 @@ async function handleApi(db, req, res, url) {
     if (!row) throw httpError('贡献记录不存在', 404);
     const actor = requireContributionAccess(db, req, row);
     const { fields } = await parsePayload(req);
-    const updated = updateContributionFields(db, row.id, actor.id, fields);
+    let updated = updateContributionFields(db, row.id, actor.id, fields);
+    if (updated.status === 'approved') {
+      publishContribution(db, updated, actor);
+      updated = getContribution(db, row.id);
+    }
     return jsonResponse(res, 200, { contribution: contributionDetail(db, updated) });
   }
   const submitMatch = /^\/api\/contributions\/([^/]+)\/submit$/.exec(pathname);
@@ -1073,6 +1121,7 @@ async function handleApi(db, req, res, url) {
       ORDER BY p.updated_at DESC LIMIT 500
     `).all(...policyValues).map((row) => ({
       id: row.id,
+      contributionId: row.contribution_id,
       title: row.title,
       program: row.program,
       level: row.policy_level,
@@ -1177,13 +1226,14 @@ async function handleApi(db, req, res, url) {
     }
     const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
     const rows = db.prepare(`
-      SELECT p.*, r.category, r.amount_type, r.rate, r.fixed_amount, r.cap_amount, r.cap_unit
+      SELECT p.*, r.category, r.amount_type, r.rate, r.fixed_amount, r.cap_amount, r.cap_unit,
+        r.rule_text, r.rule_type, r.threshold_amount, r.discount_amount, r.per_user_limit, r.stackable
       FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id
       ${where}
       ORDER BY p.updated_at DESC LIMIT 500
     `).all(...values);
     return jsonResponse(res, 200, { policies: rows.map((row) => ({
-      id: row.id, title: row.title, program: row.program, level: row.policy_level, issuer: row.issuer,
+      id: row.id, contributionId: row.contribution_id, title: row.title, program: row.program, level: row.policy_level, issuer: row.issuer,
       fundingSource: row.funding_source,
       officialFileName: row.official_file_name, docNo: row.doc_no, description: row.description, endNote: row.end_note,
       documentType: row.document_type, verificationStatus: row.verification_status,
@@ -1193,7 +1243,161 @@ async function handleApi(db, req, res, url) {
       effectiveTo: row.effective_to, sourceUrl: row.source_url, category: row.category,
       amountType: row.amount_type, rate: row.rate, fixedAmount: row.fixed_amount, capAmount: row.cap_amount, capUnit: row.cap_unit,
       ruleText: row.rule_text,
+      ruleType: row.rule_type,
+      thresholdAmount: row.threshold_amount,
+      discountAmount: row.discount_amount,
+      perUserLimit: row.per_user_limit,
+      stackable: row.stackable,
     })) });
+  }
+
+  const policyUpdateMatch = /^\/api\/policies\/([^/]+)$/.exec(pathname);
+  if (policyUpdateMatch && req.method === 'PATCH') {
+    const actor = requireUser(db, req);
+    const policy = db.prepare(`
+      SELECT p.*, r.id AS rule_id, r.category, r.amount_type, r.rate, r.fixed_amount, r.cap_amount,
+        r.cap_unit, r.rule_text, r.rule_type, r.threshold_amount, r.discount_amount,
+        r.per_user_limit, r.stackable, r.conditions_text
+      FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id
+      WHERE p.id = ?
+    `).get(policyUpdateMatch[1]);
+    if (!policy) throw httpError('政策不存在', 404);
+    const { fields = {} } = await parsePayload(req);
+    const title = firstText(fields.title, policy.title);
+    const sourceUrl = normalizeUrl(firstText(fields.sourceUrl, policy.source_url));
+    const geo = inferGeo({
+      jurisdictionName: firstText(fields.jurisdictionName, policy.jurisdiction_name),
+      city: firstText(fields.jurisdictionCity, policy.jurisdiction_city),
+      district: firstText(fields.jurisdictionDistrict, policy.jurisdiction_district),
+      title,
+      sourceUrl,
+    });
+    const jurisdictionName = geo.province || firstText(fields.jurisdictionName, policy.jurisdiction_name, '全国') || '全国';
+    const jurisdictionCity = geo.city || firstText(fields.jurisdictionCity, policy.jurisdiction_city);
+    const jurisdictionDistrict = geo.district || firstText(fields.jurisdictionDistrict, policy.jurisdiction_district);
+    const amountType = firstText(fields.amountType, policy.amount_type, 'unknown') || 'unknown';
+    const rate = toNumber(fields.rate ?? policy.rate);
+    const amountValue = toNumber(fields.amountValue ?? policy.fixed_amount);
+    const capAmount = toNumber(fields.capAmount ?? policy.cap_amount);
+    const effectiveFrom = firstText(fields.effectiveFrom, policy.effective_from);
+    const effectiveTo = firstText(fields.effectiveTo, policy.effective_to);
+    const validation = validateContribution({
+      title,
+      program: firstText(fields.program, policy.program),
+      policyLevel: firstText(fields.policyLevel, policy.policy_level),
+      issuer: firstText(fields.issuer, policy.issuer),
+      jurisdictionName,
+      category: firstText(fields.category, policy.category),
+      amountType,
+      amountValue,
+      rate,
+      capAmount,
+      effectiveFrom,
+      effectiveTo,
+      sourceUrl,
+      notes: firstText(fields.conditionsText, policy.conditions_text, policy.description),
+    });
+    if (validation.errors.length) throw httpError('政策字段校验失败', 400, validation.errors);
+    const status = effectiveTo && effectiveTo < nowIso().slice(0, 10) ? 'expired' : firstText(fields.status, policy.status, 'active');
+    const verificationStatus = ['pending', 'verified'].includes(String(fields.verificationStatus || '')) ? String(fields.verificationStatus) : policy.verification_status;
+    const timestamp = nowIso();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare(`
+        UPDATE policies SET title = ?, official_file_name = ?, doc_no = ?, program = ?, policy_level = ?,
+          issuer = ?, funding_source = ?, description = ?, end_note = ?, document_type = ?,
+          verification_status = ?, jurisdiction_code = ?, jurisdiction_name = ?, jurisdiction_city = ?,
+          jurisdiction_district = ?, status = ?, effective_from = ?, effective_to = ?, source_url = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        title,
+        firstText(fields.officialFileName, policy.official_file_name, title),
+        firstText(fields.docNo, policy.doc_no),
+        firstText(fields.program, policy.program),
+        firstText(fields.policyLevel, policy.policy_level),
+        firstText(fields.issuer, policy.issuer),
+        firstText(fields.fundingSource, policy.funding_source),
+        firstText(fields.description, policy.description, fields.conditionsText, policy.conditions_text),
+        firstText(fields.endNote, policy.end_note),
+        firstText(fields.documentType, policy.document_type, 'unknown'),
+        verificationStatus,
+        firstText(fields.jurisdictionCode, policy.jurisdiction_code),
+        jurisdictionName,
+        jurisdictionCity,
+        jurisdictionDistrict,
+        status,
+        effectiveFrom,
+        effectiveTo,
+        sourceUrl,
+        timestamp,
+        policy.id,
+      );
+      const ruleValues = {
+        category: firstText(fields.category, policy.category),
+        amountType,
+        rate,
+        fixedAmount: amountValue,
+        capAmount,
+        capUnit: firstText(fields.capUnit, policy.cap_unit, '元'),
+        ruleText: firstText(fields.ruleText, policy.rule_text),
+        ruleType: firstText(fields.ruleType, policy.rule_type, 'unknown'),
+        thresholdAmount: toNumber(fields.thresholdAmount ?? policy.threshold_amount),
+        discountAmount: toNumber(fields.discountAmount ?? policy.discount_amount),
+        perUserLimit: toNumber(fields.perUserLimit ?? policy.per_user_limit),
+        stackable: fields.stackable == null || fields.stackable === '' ? policy.stackable : (toBoolean(fields.stackable) ? 1 : 0),
+        conditionsText: firstText(fields.conditionsText, policy.conditions_text, fields.description, policy.description),
+      };
+      if (policy.rule_id) {
+        db.prepare(`
+          UPDATE subsidy_rules SET category = ?, amount_type = ?, rate = ?, fixed_amount = ?, cap_amount = ?,
+            cap_unit = ?, rule_text = ?, rule_type = ?, threshold_amount = ?, discount_amount = ?,
+            per_user_limit = ?, stackable = ?, conditions_text = ? WHERE id = ?
+        `).run(ruleValues.category, ruleValues.amountType, ruleValues.rate, ruleValues.fixedAmount,
+          ruleValues.capAmount, ruleValues.capUnit, ruleValues.ruleText, ruleValues.ruleType,
+          ruleValues.thresholdAmount, ruleValues.discountAmount, ruleValues.perUserLimit,
+          ruleValues.stackable, ruleValues.conditionsText, policy.rule_id);
+      } else {
+        db.prepare(`
+          INSERT INTO subsidy_rules (
+            id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, cap_unit, rule_text,
+            rule_type, threshold_amount, discount_amount, per_user_limit, stackable, conditions_text,
+            conditions_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(newId(), policy.id, ruleValues.category, ruleValues.amountType, ruleValues.rate,
+          ruleValues.fixedAmount, ruleValues.capAmount, ruleValues.capUnit, ruleValues.ruleText,
+          ruleValues.ruleType, ruleValues.thresholdAmount, ruleValues.discountAmount,
+          ruleValues.perUserLimit, ruleValues.stackable, ruleValues.conditionsText,
+          JSON.stringify({ editedAt: timestamp }), timestamp);
+      }
+      if (policy.contribution_id) {
+        db.prepare(`
+          UPDATE contributions SET title = ?, program = ?, policy_level = ?, issuer = ?, funding_source = ?,
+            official_file_name = ?, doc_no = ?, description = ?, end_note = ?, document_type = ?,
+            jurisdiction_name = ?, jurisdiction_city = ?, jurisdiction_district = ?, category = ?,
+            amount_type = ?, amount_value = ?, rate = ?, cap_amount = ?, rule_text = ?, rule_type = ?,
+            threshold_amount = ?, discount_amount = ?, per_user_limit = ?, stackable = ?,
+            conditions_text = ?, effective_from = ?, effective_to = ?, source_url = ?, updated_at = ?
+          WHERE id = ?
+        `).run(
+          title, firstText(fields.program, policy.program), firstText(fields.policyLevel, policy.policy_level),
+          firstText(fields.issuer, policy.issuer), firstText(fields.fundingSource, policy.funding_source),
+          firstText(fields.officialFileName, policy.official_file_name, title), firstText(fields.docNo, policy.doc_no),
+          firstText(fields.description, policy.description, fields.conditionsText, policy.conditions_text),
+          firstText(fields.endNote, policy.end_note), firstText(fields.documentType, policy.document_type, 'unknown'),
+          jurisdictionName, jurisdictionCity, jurisdictionDistrict, ruleValues.category,
+          ruleValues.amountType, ruleValues.fixedAmount, ruleValues.rate, ruleValues.capAmount,
+          ruleValues.ruleText, ruleValues.ruleType, ruleValues.thresholdAmount, ruleValues.discountAmount,
+          ruleValues.perUserLimit, ruleValues.stackable, ruleValues.conditionsText,
+          effectiveFrom, effectiveTo, sourceUrl, timestamp, policy.contribution_id,
+        );
+      }
+      addEvent(db, { entityType: 'policy', entityId: policy.id, actorId: actor.id, action: 'updated', detail: { via: 'policy_editor' } });
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return jsonResponse(res, 200, { ok: true, policyId: policy.id });
   }
 
   const verifyPolicyMatch = /^\/api\/policies\/([^/]+)\/verify$/.exec(pathname);

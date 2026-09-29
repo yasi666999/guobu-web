@@ -75,8 +75,7 @@ export function validateContribution(input, { requireEvidence = false } = {}) {
   if (!value.jurisdictionName) warnings.push('尚未填写适用地区');
   if (value.amountType === 'percent' && value.rate == null) warnings.push('比例型补贴建议填写补贴比例');
   if (value.amountType === 'fixed' && value.amountValue == null) warnings.push('固定金额补贴建议填写补贴金额');
-  if (requireEvidence && !value.sourceUrl) errors.push('提交审核前必须填写官方来源链接');
-  if (requireEvidence && !input.documentId && !input.extracted) warnings.push('建议附上原始文件或完成解析');
+  if (requireEvidence && !value.sourceUrl && !input.documentId && !input.extracted) warnings.push('未提供官方来源链接或原始文件，入库后标记为待核验');
 
   return { errors, warnings, value };
 }
