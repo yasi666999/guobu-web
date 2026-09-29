@@ -5,7 +5,7 @@ const BASE_PATH = String(window.__BASE_PATH__ || '').replace(/\/$/, '');
 const state = {
   user: null,
   csrfToken: null,
-  view: 'dashboard',
+  view: 'collect',
   stats: null,
   sources: [],
   contributions: [],
@@ -14,6 +14,10 @@ const state = {
   users: [],
   invites: [],
   importRuns: [],
+  sourceDashboard: [],
+  policies: [],
+  preview: null,
+  policyQuery: '',
   selected: null,
   filter: '',
   loading: false,
@@ -83,9 +87,11 @@ async function refresh() {
     api('/api/contributions'),
     api('/api/documents'),
     api('/api/aggregates'),
+    api('/api/source-dashboard'),
+    api('/api/policies'),
   ];
   if (state.user && state.user.role === 'admin') tasks.push(api('/api/users'), api('/api/import-runs'), api('/api/invites'));
-  const [stats, sources, contributions, documents, aggregates, users, importRuns, invites] = await Promise.all(tasks);
+  const [stats, sources, contributions, documents, aggregates, sourceDashboard, policies, users, importRuns, invites] = await Promise.all(tasks);
   state.stats = stats;
   state.sources = sources.sources || [];
   state.contributions = contributions.contributions || [];
@@ -94,6 +100,8 @@ async function refresh() {
   if (users) state.users = users.users || [];
   if (importRuns) state.importRuns = importRuns.importRuns || [];
   if (invites) state.invites = invites.invites || [];
+  state.sourceDashboard = sourceDashboard.sources || [];
+  state.policies = policies.policies || [];
 }
 
 function renderAuth() {
@@ -102,7 +110,7 @@ function renderAuth() {
       <section class="auth-card">
         <div class="brand-mark">补</div>
         <h1>国补协作库</h1>
-        <p class="subtitle">多人补充、证据留痕、审核后发布。</p>
+        <p class="subtitle">搜索国补页面、解析政策内容、导入数据库。</p>
         <form id="login-form" class="grid">
           <div class="field"><label>用户名</label><input name="username" autocomplete="username" required></div>
           <div class="field"><label>密码</label><input name="password" type="password" autocomplete="current-password" required></div>
@@ -113,7 +121,7 @@ function renderAuth() {
           <div class="field"><label>用户名</label><input name="username" autocomplete="username" required placeholder="3-40 位字母数字"></div>
           <div class="field"><label>显示名称</label><input name="displayName" required placeholder="例如：政策组小李"></div>
           <div class="field"><label>密码</label><input name="password" type="password" autocomplete="new-password" minlength="8" required></div>
-          <div class="field"><label>邀请码</label><input name="inviteCode" placeholder="非首个账号需要管理员提供"></div>
+          <div class="hint">当前为统一用户模式，注册后即可使用全部功能。</div>
           <button class="btn primary" type="submit">注册</button>
         </form>
       </section>
@@ -121,16 +129,11 @@ function renderAuth() {
 }
 
 function navItems() {
-  const pending = state.contributions.filter((item) => ['submitted', 'in_review'].includes(item.status)).length;
   return [
-    ['dashboard', '概览', ''],
     ['sources', '数据源', state.sources.length],
-    ['collect', '采集录入', ''],
-    ['contributions', '我的贡献', state.contributions.length],
-    ['review', '审核队列', pending || ''],
-    ['documents', '原始文档', state.documents.length],
-    ['admin', '用户与导入', state.user?.role === 'admin' ? state.users.length : ''],
-  ].filter(([key]) => key !== 'admin' || state.user?.role === 'admin');
+    ['collect', '网页采集', ''],
+    ['source-dashboard', '已有数据源看板', state.policies.length],
+  ];
 }
 
 function shell(content, title, subtitle) {
@@ -144,7 +147,7 @@ function shell(content, title, subtitle) {
         <div class="brand"><div class="brand-mark">补</div><div><strong>国补协作库</strong><small>证据优先 · 多人审核</small></div></div>
         <nav class="nav">${nav}</nav>
         <div class="sidebar-footer">
-          <div class="user-chip"><div class="avatar">${esc((state.user?.displayName || '?').slice(0, 1))}</div><div><strong>${esc(state.user?.displayName)}</strong><small>${esc(ROLE_LABELS[state.user?.role] || state.user?.role)}</small></div></div>
+          <div class="user-chip"><div class="avatar">${esc((state.user?.displayName || '?').slice(0, 1))}</div><div><strong>${esc(state.user?.displayName)}</strong><small>统一用户</small></div></div>
           <div class="sidebar-actions"><button class="btn small" data-action="refresh">刷新</button><button class="btn small" data-action="change-password">密码</button><button class="btn small ghost" data-action="logout">退出</button></div>
         </div>
       </aside>
@@ -242,6 +245,93 @@ function renderCollect() {
       ${state.documents.slice(0, 10).map((doc) => `<tr><td><div class="title">${esc(doc.title || doc.url || '未命名文档')}</div><div class="meta truncate">${esc(doc.url || doc.rawPath || '')}</div></td><td>${badge(doc.status)}</td><td>${esc(doc.mimeType || '—')}</td><td>${formatTime(doc.createdAt)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">暂无文档。</td></tr>'}
       </tbody></table></div>
     </section>`, '采集录入', '公开链接、人工文件、开放接口统一进入快照和解析队列。');
+}
+
+function previewField(document, name) {
+  return document?.extracted?.fields?.[name]?.value;
+}
+
+function renderPreview(document) {
+  if (!document) return '';
+  const relevance = document.extracted?.relevance || {};
+  const levelLabel = { high: '高度相关', medium: '可能相关', low: '弱相关', none: '未匹配' }[relevance.level] || '未匹配';
+  const fields = document.extracted?.fields || {};
+  const evidence = document.extracted?.evidence || [];
+  const warnings = document.extracted?.warnings || [];
+  return `
+    <section class="card">
+      <div class="card-title"><div><h2>国补识别预展</h2><p>确认解析结果后导入数据库。</p></div><div class="list-actions"><span class="badge ${relevance.isRelated ? 'approved' : 'rejected'}">${esc(levelLabel)} · ${esc(relevance.score || 0)} 分</span><span class="badge processed">${esc(STATUS_LABELS[document.status] || document.status)}</span></div></div>
+      <div class="detail-grid">
+        <div>
+          <dl class="kv">
+            <dt>页面标题</dt><dd>${esc(document.title || fields.title?.value || '—')}</dd>
+            <dt>发布机关</dt><dd>${esc(fields.issuer?.value || '—')}</dd>
+            <dt>适用地区</dt><dd>${esc(fields.jurisdiction_name?.value || '—')}</dd>
+            <dt>适用品类</dt><dd>${esc(fields.category?.value || '—')}</dd>
+            <dt>金额规则</dt><dd>${fields.rate?.value != null ? `按比例 ${esc(fields.rate.value)}%` : ''}${fields.amount_value?.value != null ? `固定 ${esc(fields.amount_value.value)} 元` : ''}${fields.cap_amount?.value != null ? ` · 上限 ${esc(fields.cap_amount.value)} 元` : ''}${fields.rate?.value == null && fields.amount_value?.value == null && fields.cap_amount?.value == null ? '—' : ''}</dd>
+            <dt>有效期</dt><dd>${esc(fields.effective_from?.value || '—')} → ${esc(fields.effective_to?.value || '—')}</dd>
+            <dt>原文链接</dt><dd>${document.url ? `<a href="${esc(document.url)}" target="_blank" rel="noreferrer">${esc(document.url)}</a>` : '—'}</dd>
+          </dl>
+          ${relevance.summary ? `<div class="notice ${relevance.isRelated ? 'success' : 'warn'}">${esc(relevance.summary)}</div>` : ''}
+          ${warnings.length ? `<div class="notice warn" style="margin-top:10px">${warnings.map(esc).join('；')}</div>` : ''}
+          <div class="actions"><button class="btn primary" data-action="import-preview" data-id="${esc(document.id)}" ${relevance.isRelated ? '' : 'disabled'}>导入数据库</button><button class="btn" data-action="parse-document" data-id="${esc(document.id)}">重新解析</button><button class="btn ghost" data-action="discard-preview">取消预展</button></div>
+        </div>
+        <div>
+          <h3 style="margin-top:0">原文证据</h3>
+          ${evidence.length ? evidence.slice(0, 8).map((item) => `<div class="evidence">${esc(item.quote || '')}<small>${esc(item.field_name)} · 第 ${esc(item.page_number || '?')} 页 · 置信度 ${esc(item.confidence ?? '—')}</small></div>`).join('') : '<div class="notice">未抽取到字段级引文。</div>'}
+          <p class="muted small">解析字符数：${esc(document.extracted?.text_chars || 0)}</p>
+        </div>
+      </div>
+    </section>`;
+}
+
+function renderCollectV2() {
+  const recent = state.documents.slice(0, 8);
+  return shell(`
+    <section class="card">
+      <div class="card-title"><div><h2>输入网址，自动识别国补页面</h2><p>系统会抓取公开页面、识别国补相关度、解析政策字段并生成预展。</p></div></div>
+      <form id="collect-form" class="grid">
+        <div class="field"><label>官方公告或政策页面 URL</label><input name="url" type="url" required placeholder="https://www.gov.cn/..."></div>
+        <div class="field"><label>关联已有数据源（可选）</label><select name="sourceId"><option value="">不关联</option>${sourceOptions()}</select></div>
+        <div class="notice">只抓取公开页面；不会绕过登录、验证码或访问控制。识别和解析结果先进入预展，不会直接写入数据库。</div>
+        <button class="btn primary" type="submit">识别并生成预展</button>
+      </form>
+    </section>
+    ${renderPreview(state.preview)}
+    <section class="card">
+      <div class="card-title"><div><h2>最近采集页面</h2><p>${recent.length} 条最近快照</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>标题</th><th>识别结果</th><th>解析状态</th><th>采集时间</th><th>操作</th></tr></thead><tbody>
+      ${recent.length ? recent.map((doc) => `<tr><td><div class="title">${esc(doc.title || doc.url || '未命名页面')}</div><div class="meta truncate">${esc(doc.url || '')}</div></td><td>${doc.extracted?.relevance ? `<span class="badge ${doc.extracted.relevance.isRelated ? 'approved' : 'rejected'}">${esc(doc.extracted.relevance.score || 0)} 分</span>` : '—'}</td><td>${badge(doc.status)}</td><td>${formatTime(doc.createdAt)}</td><td><button class="btn small" data-action="preview-document" data-id="${esc(doc.id)}">查看预展</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty">还没有采集页面。</td></tr>'}
+      </tbody></table></div>
+    </section>`, '网页采集', 'URL → 国补识别 → 内容解析 → 预展确认 → 导入数据库');
+}
+
+function renderSourceDashboard() {
+  const query = state.policyQuery || '';
+  const list = state.policies || [];
+  return shell(`
+    <section class="card">
+      <div class="card-title"><div><h2>已有数据源看板</h2><p>查看数据源采集情况、最近更新和已入库政策。</p></div></div>
+      <div class="grid four">
+        <div class="stat accent"><div class="label">数据源</div><div class="value">${esc(state.sourceDashboard.length)}</div></div>
+        <div class="stat"><div class="label">政策记录</div><div class="value">${esc(state.policies.length)}</div></div>
+        <div class="stat"><div class="label">原始文档</div><div class="value">${esc(state.documents.length)}</div></div>
+        <div class="stat"><div class="label">采集数据源</div><div class="value">${esc(state.sourceDashboard.filter((item) => item.documentCount > 0).length)}</div></div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="card-title"><div><h2>数据源状态</h2><p>来源、采集频率、文档数和已入库政策数。</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>来源</th><th>层级 / 地区</th><th>类型</th><th>采集</th><th>文档</th><th>已入库</th><th>最近更新</th></tr></thead><tbody>
+      ${state.sourceDashboard.length ? state.sourceDashboard.map((item) => `<tr><td><div class="title">${esc(item.name)}</div><div class="meta truncate">${esc(item.listingUrl || item.baseUrl || '')}</div></td><td>${esc(LEVEL_LABELS[item.level] || item.level)}<div class="meta">${esc(item.jurisdictionName || '—')}</div></td><td>${esc(item.sourceType)}</td><td>${esc(item.frequency)}<div class="meta">${formatTime(item.lastFetchedAt)}</div></td><td>${esc(item.documentCount || 0)}</td><td>${esc(item.importedCount || 0)}</td><td>${formatTime(item.lastDocumentAt)}</td></tr>`).join('') : '<tr><td colspan="7" class="empty">还没有数据源。</td></tr>'}
+      </tbody></table></div>
+    </section>
+    <section class="card">
+      <div class="card-title"><div><h2>搜索已入库政策</h2><p>按标题、发布机关、地区、品类和来源链接搜索。</p></div></div>
+      <form id="policy-search-form" class="actions"><input name="q" value="${esc(query)}" placeholder="输入关键词，例如：家电、广东、以旧换新" style="max-width:420px"><button class="btn primary" type="submit">搜索</button></form>
+      <div class="table-wrap"><table><thead><tr><th>政策</th><th>地区 / 品类</th><th>金额规则</th><th>有效期</th><th>来源</th></tr></thead><tbody>
+      ${list.length ? list.map((item) => `<tr><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.issuer || '')}</div></td><td>${esc(item.jurisdictionName || '—')}<div class="meta">${esc(item.category || '—')}</div></td><td>${item.rate != null ? `${esc(item.rate)}%` : ''}${item.capAmount != null ? ` · 上限 ${esc(item.capAmount)} 元` : ''}${item.rate == null && item.capAmount == null ? '—' : ''}</td><td>${esc(item.effectiveFrom || '—')} → ${esc(item.effectiveTo || '—')}</td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">官方原文</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">没有匹配政策。</td></tr>'}
+      </tbody></table></div>
+    </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }
 
 function renderContributions() {
@@ -389,16 +479,9 @@ function renderDetail() {
 
 function render() {
   if (!state.user) return renderAuth();
-  if (state.view === 'dashboard') app.innerHTML = renderDashboard();
-  else if (state.view === 'sources') app.innerHTML = renderSources();
-  else if (state.view === 'collect') app.innerHTML = renderCollect();
-  else if (state.view === 'contributions') app.innerHTML = renderContributions();
-  else if (state.view === 'review') {
-    app.innerHTML = renderReview();
-    loadPublished();
-  } else if (state.view === 'documents') app.innerHTML = renderDocuments();
-  else if (state.view === 'admin') app.innerHTML = renderAdmin();
-  else if (state.view === 'detail') app.innerHTML = renderDetail();
+  if (state.view === 'sources') app.innerHTML = renderSources();
+  else if (state.view === 'source-dashboard') app.innerHTML = renderSourceDashboard();
+  else app.innerHTML = renderCollectV2();
 }
 
 async function loadPublished() {
@@ -426,6 +509,35 @@ async function handleAction(action, target) {
     state.view = target.dataset.view;
     state.selected = null;
     render();
+    return;
+  }
+  if (action === 'preview-document') {
+    try {
+      const result = await api(`/api/documents/${target.dataset.id}`);
+      state.preview = result.document;
+      state.view = 'collect';
+      render();
+    } catch (error) { toast(error.message, 'error'); }
+    return;
+  }
+  if (action === 'discard-preview') {
+    state.preview = null;
+    render();
+    return;
+  }
+  if (action === 'import-preview') {
+    target.disabled = true;
+    try {
+      const result = await api(`/api/documents/${target.dataset.id}/import`, { method: 'POST', body: {} });
+      toast(result.duplicate ? '数据库中已存在相同政策' : '已导入数据库', 'success');
+      state.preview = null;
+      await refresh();
+      state.view = 'source-dashboard';
+      render();
+    } catch (error) {
+      toast(error.message, 'error');
+      target.disabled = false;
+    }
     return;
   }
   if (action === 'show-register') {
@@ -506,6 +618,7 @@ async function handleAction(action, target) {
       const path = action === 'parse-document' ? `/api/documents/${target.dataset.id}/parse` : `/api/contributions/${target.dataset.id}/parse`;
       const result = await api(path, { method: 'POST' });
       if (result.contribution) state.selected = result.contribution;
+      if (result.document && state.preview?.id === result.document.id) state.preview = result.document;
       toast('解析完成', 'success'); await refresh(); render();
     } catch (error) { toast(error.message, 'error'); target.disabled = false; }
     return;
@@ -550,7 +663,12 @@ app.addEventListener('submit', async (event) => {
     }
     if (form.id === 'collect-form') {
       const data = await api('/api/collect', { method: 'POST', body: new FormData(form) });
-      toast(data.duplicate ? '该文件哈希已存在，已返回原文档' : '采集并解析完成', 'success'); await refresh(); state.view = 'documents'; render(); return;
+      state.preview = data.document;
+      toast(data.duplicate ? '该文件已采集，已加载原预展' : '已识别并生成国补预展', 'success');
+      await refresh();
+      state.view = 'collect';
+      render();
+      return;
     }
     if (form.id === 'upload-form') {
       const formData = new FormData(form);
@@ -579,6 +697,16 @@ app.addEventListener('submit', async (event) => {
       const data = await api('/api/invites', { method: 'POST', body: new FormData(form) });
       window.alert(`邀请码：${data.invite.code}\n角色：${data.invite.role}\n请发送给对应成员。`);
       await refresh(); render(); return;
+    }
+    if (form.id === 'policy-search-form') {
+      const formData = new FormData(form);
+      const q = String(formData.get('q') || '');
+      state.policyQuery = q;
+      const data = await api(`/api/policies${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+      state.policies = data.policies || [];
+      state.view = 'source-dashboard';
+      render();
+      return;
     }
   } catch (error) { toast(error.message, 'error'); }
 });

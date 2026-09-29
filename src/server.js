@@ -380,6 +380,94 @@ function publishContribution(db, row, reviewer) {
   }
 }
 
+function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) {
+  const document = getDocument(db, documentId);
+  if (!document) throw httpError('文档不存在', 404);
+  const parsed = documentExtractionJson(document);
+  if (!parsed) throw httpError('文档尚未解析，不能导入', 409);
+  const relevance = parsed.relevance || { score: 0, level: 'none', isRelated: false, summary: '' };
+  if (!relevance.isRelated && overrides.force !== true) {
+    throw httpError('该页面未识别为国补相关内容，不能自动导入', 409, relevance);
+  }
+
+  const summary = extractedFieldSummary(parsed);
+  const jurisdictionName = overrides.jurisdictionName || summary.jurisdictionName || '全国';
+  const title = overrides.title || summary.title || document.title || '未命名国补政策';
+  const issuer = overrides.issuer || summary.issuer || '';
+  const amountType = overrides.amountType || summary.amountType || 'unknown';
+  const rate = overrides.rate ?? summary.rate ?? null;
+  const amountValue = overrides.amountValue ?? summary.amountValue ?? null;
+  const capAmount = overrides.capAmount ?? summary.capAmount ?? null;
+  const effectiveFrom = overrides.effectiveFrom || summary.effectiveFrom || null;
+  const effectiveTo = overrides.effectiveTo || summary.effectiveTo || null;
+  const sourceUrl = document.canonical_url || document.url || null;
+  const dedupKey = computeDedupKey({ title, issuer, effectiveFrom, jurisdictionName });
+  const existing = findDuplicate(db, dedupKey);
+  if (existing) {
+    return { duplicate: true, contributionId: existing.id, policyId: db.prepare('SELECT id FROM policies WHERE contribution_id = ?').get(existing.id)?.id || null };
+  }
+
+  const policyLevel = overrides.policyLevel || (jurisdictionName === '全国' ? 'national' : 'other');
+  const timestamp = nowIso();
+  const contributionId = newId();
+  const policyId = newId();
+  const validation = {
+    errors: [],
+    warnings: ['由采集页自动识别并导入；请核对原始来源。'],
+    relevance,
+    importedFromDocument: documentId,
+  };
+  const status = effectiveTo && effectiveTo < timestamp.slice(0, 10) ? 'expired' : 'active';
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare(`
+      INSERT INTO contributions (
+        id, user_id, status, title, program, policy_level, issuer, jurisdiction_name, category,
+        amount_type, amount_value, rate, cap_amount, effective_from, effective_to, source_url,
+        notes, extracted_json, validation_json, dedup_key, document_id, reviewer_id, reviewed_at, created_at, updated_at
+      ) VALUES (?, ?, 'approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      contributionId, actorId, title, overrides.program || summary.program || '消费品以旧换新',
+      policyLevel, issuer, jurisdictionName, overrides.category || summary.category || '其他', amountType,
+      amountValue, rate, capAmount, effectiveFrom, effectiveTo, sourceUrl,
+      `由网址自动采集；${relevance.summary || ''}`.trim(), JSON.stringify(parsed), JSON.stringify(validation),
+      dedupKey || null, documentId, actorId, timestamp, timestamp, timestamp,
+    );
+    db.prepare(`
+      INSERT INTO policies (
+        id, contribution_id, title, program, policy_level, issuer, jurisdiction_code, jurisdiction_name,
+        status, effective_from, effective_to, source_url, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      policyId, contributionId, title, overrides.program || summary.program || '消费品以旧换新', policyLevel,
+      issuer, jurisdictionName, status, effectiveFrom, effectiveTo, sourceUrl, timestamp, timestamp,
+    );
+    db.prepare(`
+      INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, conditions_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      newId(), policyId, overrides.category || summary.category || '其他', amountType, rate,
+      amountValue, capAmount, JSON.stringify({ relevance, notes: '采集页自动导入' }), timestamp,
+    );
+    const evidenceRows = (parsed.evidence || []).length
+      ? parsed.evidence
+      : [{ field_name: 'relevance', quote: relevance.summary, page_number: null, confidence: relevance.score / 100 }];
+    for (const evidence of evidenceRows) {
+      db.prepare(`
+        INSERT INTO evidence (id, policy_id, document_id, field_name, quote, page_number, confidence, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(newId(), policyId, documentId, evidence.field_name || 'source', evidence.quote || '', evidence.page_number || null, evidence.confidence ?? null, timestamp);
+    }
+    addEvent(db, { entityType: 'document', entityId: documentId, actorId, action: 'imported_as_policy', detail: { contributionId, policyId, relevance } });
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+  return { duplicate: false, contributionId, policyId };
+}
+
 function reviewContribution(db, contributionId, reviewer, action, comment) {
   const row = getContribution(db, contributionId);
   if (!row) throw httpError('贡献记录不存在', 404);
@@ -743,6 +831,14 @@ async function handleApi(db, req, res, url) {
     return jsonResponse(res, 200, { document: documentView(getDocument(db, target.id)) });
   }
 
+  const documentImportMatch = /^\/api\/documents\/([^/]+)\/import$/.exec(pathname);
+  if (documentImportMatch && req.method === 'POST') {
+    const actor = requireUser(db, req);
+    const { fields } = await parsePayload(req);
+    const result = importDocumentAsPolicy(db, documentImportMatch[1], actor.id, fields || {});
+    return jsonResponse(res, result.duplicate ? 200 : 201, result);
+  }
+
   if (pathname === '/api/collect' && req.method === 'POST') {
     const actor = requireRole(db, req, ['admin', 'reviewer', 'contributor']);
     const { fields } = await parsePayload(req);
@@ -754,6 +850,26 @@ async function handleApi(db, req, res, url) {
       parse: true,
     });
     return jsonResponse(res, 201, { ...result, document: documentView(getDocument(db, result.documentId)) });
+  }
+
+  if (pathname === '/api/source-dashboard' && req.method === 'GET') {
+    const rows = db.prepare(`
+      SELECT s.*,
+        COUNT(DISTINCT d.id) AS document_count,
+        COUNT(DISTINCT c.id) AS imported_count,
+        MAX(d.created_at) AS last_document_at
+      FROM sources s
+      LEFT JOIN documents d ON d.source_id = s.id
+      LEFT JOIN contributions c ON c.document_id = d.id AND c.status = 'approved'
+      GROUP BY s.id
+      ORDER BY s.updated_at DESC
+    `).all();
+    return jsonResponse(res, 200, { sources: rows.map((row) => ({
+      ...sourceView(row),
+      documentCount: row.document_count,
+      importedCount: row.imported_count,
+      lastDocumentAt: row.last_document_at,
+    })) });
   }
 
   if (pathname === '/api/import' && req.method === 'POST') {
@@ -783,11 +899,30 @@ async function handleApi(db, req, res, url) {
   }
 
   if (pathname === '/api/policies' && req.method === 'GET') {
+    const filters = [];
+    const values = [];
+    const q = String(url.searchParams.get('q') || '').trim();
+    const category = String(url.searchParams.get('category') || '').trim();
+    const jurisdiction = String(url.searchParams.get('jurisdiction') || '').trim();
+    if (q) {
+      filters.push('(p.title LIKE ? OR p.issuer LIKE ? OR p.source_url LIKE ?)');
+      values.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    if (category) {
+      filters.push('r.category LIKE ?');
+      values.push(`%${category}%`);
+    }
+    if (jurisdiction) {
+      filters.push('p.jurisdiction_name LIKE ?');
+      values.push(`%${jurisdiction}%`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
     const rows = db.prepare(`
       SELECT p.*, r.category, r.amount_type, r.rate, r.fixed_amount, r.cap_amount
       FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id
+      ${where}
       ORDER BY p.updated_at DESC LIMIT 500
-    `).all();
+    `).all(...values);
     return jsonResponse(res, 200, { policies: rows.map((row) => ({
       id: row.id, title: row.title, program: row.program, level: row.policy_level, issuer: row.issuer,
       jurisdictionName: row.jurisdiction_name, status: row.status, effectiveFrom: row.effective_from,
@@ -846,7 +981,9 @@ async function handleRequest(db, req, res) {
       data = Buffer.from(data.toString('utf8').replaceAll('__APP_BASE_PATH__', basePath), 'utf8');
     }
     const type = MIME_TYPES[extname(filePath).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=300' });
+    const extension = extname(filePath).toLowerCase();
+    const cacheControl = ['.html', '.js', '.css'].includes(extension) ? 'no-cache' : 'public, max-age=300';
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cacheControl });
     res.end(req.method === 'HEAD' ? undefined : data);
   } catch (error) {
     if (res.headersSent) return res.end();

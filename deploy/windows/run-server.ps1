@@ -15,7 +15,7 @@ $env:HOST = "127.0.0.1"
 $env:PORT = "8787"
 $env:DATA_DIR = Join-Path $Root "data"
 $env:COOKIE_SECURE = "1"
-$env:ALLOW_REGISTRATION = "0"
+$env:ALLOW_REGISTRATION = "1"
 $env:AUTO_COLLECT = "1"
 $env:APP_BASE_PATH = "/guobu"
 

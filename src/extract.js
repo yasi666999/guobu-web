@@ -59,6 +59,46 @@ function fieldValue(parsed, name) {
   return item && typeof item === 'object' && 'value' in item ? item.value : item;
 }
 
+const RELEVANCE_KEYWORDS = [
+  { word: '国补', weight: 12 },
+  { word: '以旧换新', weight: 10 },
+  { word: '消费品以旧换新', weight: 12 },
+  { word: '大规模设备更新', weight: 9 },
+  { word: '补贴', weight: 5 },
+  { word: '补助', weight: 4 },
+  { word: '实施细则', weight: 4 },
+  { word: '申报', weight: 3 },
+  { word: '汽车', weight: 3 },
+  { word: '家电', weight: 3 },
+  { word: '数码', weight: 3 },
+  { word: '农机', weight: 3 },
+  { word: '报废更新', weight: 4 },
+  { word: '置换更新', weight: 4 },
+];
+
+export function analyzeGuobuRelevance(parsed) {
+  const text = String(parsed?.text || '');
+  const title = String(fieldValue(parsed, 'title') || '');
+  let score = 0;
+  const hits = [];
+  for (const item of RELEVANCE_KEYWORDS) {
+    const inText = text.includes(item.word);
+    const inTitle = title.includes(item.word);
+    if (!inText && !inTitle) continue;
+    const weight = item.weight + (inTitle ? 5 : 0);
+    score += weight;
+    hits.push({ word: item.word, weight, inTitle });
+  }
+  const level = score >= 40 ? 'high' : score >= 20 ? 'medium' : score >= 8 ? 'low' : 'none';
+  return {
+    score,
+    level,
+    hits,
+    isRelated: score >= 8,
+    summary: hits.length ? `命中关键词：${hits.map((item) => item.word).join('、')}` : '未发现国补相关关键词',
+  };
+}
+
 export function applyExtractionToDocument(db, documentId, parsed) {
   const document = getDocument(db, documentId);
   if (!document) throw new Error('文档不存在');
@@ -94,6 +134,7 @@ export function parseDocument(db, documentId, options = {}) {
     allowOcr: options.allowOcr !== false,
     maxOcrPages: options.maxOcrPages || 8,
   });
+  parsed.relevance = analyzeGuobuRelevance(parsed);
   return applyExtractionToDocument(db, documentId, parsed);
 }
 

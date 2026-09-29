@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -99,6 +100,43 @@ test('注册、提交、审核和发布主流程可运行', async () => {
     const policies = await request('/api/policies');
     assert.equal(policies.body.policies.length, 1);
     assert.equal(policies.body.policies[0].rate, 15);
+
+    const documentId = randomUUID();
+    const parsed = {
+      text: '2026年数码产品购新补贴通知，按最终销售价格的15%给予补贴，每件最高500元。',
+      text_chars: 38,
+      fields: {
+        title: { value: '2026年数码产品购新补贴测试政策' },
+        issuer: { value: '商务部' },
+        jurisdiction_name: { value: '全国' },
+        category: { value: '数码' },
+        amount_type: { value: 'percent' },
+        rate: { value: 15 },
+        cap_amount: { value: 500 },
+        effective_from: { value: '2026-01-01' },
+      },
+      evidence: [{ field_name: 'rate', quote: '按最终销售价格的15%给予补贴', confidence: 0.95 }],
+      warnings: [],
+      relevance: { score: 35, level: 'medium', isRelated: true, summary: '命中关键词：国补、补贴、数码' },
+    };
+    db.prepare(`
+      INSERT INTO documents (id, url, canonical_url, title, mime_type, status, extracted_json, extracted_text, fetched_at, parsed_at, created_at)
+      VALUES (?, ?, ?, ?, 'text/html', 'processed', ?, ?, ?, ?, ?)
+    `).run(
+      documentId,
+      'https://www.gov.cn/test-digit.html',
+      'https://www.gov.cn/test-digit.html',
+      '2026年数码产品购新补贴测试政策',
+      JSON.stringify(parsed),
+      parsed.text,
+      new Date().toISOString(),
+      new Date().toISOString(),
+      new Date().toISOString(),
+    );
+    const importedDocument = await request(`/api/documents/${documentId}/import`, { method: 'POST', body: '{}' });
+    assert.equal(importedDocument.response.status, 201);
+    assert.equal(importedDocument.body.duplicate, false);
+    assert.ok(importedDocument.body.policyId);
 
     const invite = await request('/api/invites', {
       method: 'POST',

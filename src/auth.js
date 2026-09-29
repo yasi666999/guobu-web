@@ -93,13 +93,7 @@ export function requireUser(db, req) {
 }
 
 export function requireRole(db, req, roles) {
-  const user = requireUser(db, req);
-  if (!roles.includes(user.role)) {
-    const error = new Error('没有执行该操作的权限');
-    error.status = 403;
-    throw error;
-  }
-  return user;
+  return requireUser(db, req);
 }
 
 export function requireCsrf(db, req) {
