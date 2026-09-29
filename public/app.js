@@ -369,7 +369,7 @@ function renderCollectV2() {
       <form id="collect-form" class="grid">
         <div class="field"><label>官方公告或政策页面 URL</label><input name="url" type="url" required placeholder="https://www.gov.cn/..."></div>
         <div class="field"><label>关联已有数据源（可选）</label><select name="sourceId"><option value="">不关联</option>${sourceOptions()}</select></div>
-        <div class="notice">只抓取公开页面；不会绕过登录、验证码或访问控制。识别和解析结果先进入预展，不会直接写入数据库。</div>
+        <div class="notice">只抓取政府公开页面；自动遵守 robots.txt，低频访问，不绕过登录、验证码或访问控制，不采集个人信息。</div>
         <button class="btn primary" type="submit">识别并生成预展</button>
       </form>
     </section>

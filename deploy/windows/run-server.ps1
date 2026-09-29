@@ -18,6 +18,7 @@ $env:COOKIE_SECURE = "1"
 $env:ALLOW_REGISTRATION = "1"
 $env:AUTO_COLLECT = "1"
 $env:APP_BASE_PATH = "/guobu"
+$env:ROBOTS_ENFORCEMENT = "1"
 
 $Nginx = Get-ChildItem (Join-Path $Root "deploy\windows\nginx") -Recurse -Filter nginx.exe -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($Nginx) {

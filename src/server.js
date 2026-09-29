@@ -380,7 +380,7 @@ function publishContribution(db, row, reviewer) {
   }
 }
 
-function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) {
+export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) {
   const document = getDocument(db, documentId);
   if (!document) throw httpError('文档不存在', 404);
   const parsed = documentExtractionJson(document);

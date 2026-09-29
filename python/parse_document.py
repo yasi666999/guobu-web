@@ -331,11 +331,19 @@ def extract_funding_source(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def extract_jurisdiction(text: str) -> tuple[str | None, str | None]:
-    for province in PROVINCES:
-        index = text.find(province)
-        if index >= 0:
-            return province, text[max(0, index - 20): index + len(province) + 45]
+def extract_jurisdiction(text: str, title: str = "") -> tuple[str | None, str | None]:
+    ordered_provinces = sorted(PROVINCES, key=len, reverse=True)
+    # 标题优先，其次只检查正文前 8000 字，避免页脚模板和 ICP 信息干扰。
+    candidates = [title, text[:8000], text]
+    for source in candidates:
+        if not source:
+            continue
+        for province in ordered_provinces:
+            index = source.find(province)
+            if index >= 0:
+                return province, source[max(0, index - 20): index + len(province) + 45]
+    if any(keyword in title for keyword in ("全国", "国务院", "商务部", "财政部", "国家发展改革委")):
+        return "全国", title
     city = re.search(r"([\u4e00-\u9fff]{2,8}(?:市|州|盟|地区))", text)
     if city:
         return city.group(1), city.group(0)
@@ -414,7 +422,7 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
     if published:
         fields["published_at"] = field(published, 0.72, published)
 
-    jurisdiction, jurisdiction_quote = extract_jurisdiction(text)
+    jurisdiction, jurisdiction_quote = extract_jurisdiction(text, title or "")
     if jurisdiction:
         fields["jurisdiction_name"] = field(jurisdiction, 0.68, jurisdiction_quote or "")
 

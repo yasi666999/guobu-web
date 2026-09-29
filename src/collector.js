@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import { newId, nowIso, getSource } from './db.js';
 import { saveSnapshot } from './storage.js';
 import { extractCandidateLinks, createDiscoveredDocuments, parseDocument } from './extract.js';
+import { isAllowedByRobots } from './robots.js';
 
 const hostLastFetch = new Map();
 
@@ -42,6 +43,8 @@ export async function assertPublicUrl(rawUrl) {
 
 export async function fetchWithLimit(rawUrl, options = {}) {
   const url = await assertPublicUrl(rawUrl);
+  const robots = await isAllowedByRobots(url.toString());
+  if (!robots.allowed) throw new Error(`抓取被限制：${robots.reason}`);
   const minInterval = Math.max(1, Number(process.env.FETCH_MIN_INTERVAL_SECONDS || 5)) * 1000;
   const host = url.hostname.toLowerCase();
   const last = hostLastFetch.get(host) || 0;

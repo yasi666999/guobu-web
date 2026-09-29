@@ -118,6 +118,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 免费上线方案见 [docs/FREE_DEPLOYMENT.md](docs/FREE_DEPLOYMENT.md)。
 使用自己电脑做服务器见 [docs/HOME_SERVER_DEPLOYMENT.md](docs/HOME_SERVER_DEPLOYMENT.md)。
 
+数据采集合规基线见 [docs/COMPLIANCE.md](docs/COMPLIANCE.md)。
+
 Windows 家用服务器使用 Nginx 作为唯一入口：
 
 ```text
