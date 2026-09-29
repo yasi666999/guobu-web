@@ -98,6 +98,22 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml pull
 docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
 ```
 
+也可以直接使用一键脚本：
+
+```bash
+sudo bash deploy/oracle-install.sh guobu-yourname.duckdns.org
+```
+
+如果 DuckDNS 的 IP 需要自动更新，可在普通用户下运行：
+
+```bash
+export DUCKDNS_DOMAIN=guobu-yourname
+export DUCKDNS_TOKEN=你的DuckDNS令牌
+bash deploy/duckdns-setup.sh
+```
+
+脚本会安装每 5 分钟更新一次 IP 的定时任务。
+
 Caddy 会自动申请 HTTPS 证书。
 
 检查：
