@@ -17,6 +17,16 @@ $env:DATA_DIR = Join-Path $Root "data"
 $env:COOKIE_SECURE = "1"
 $env:ALLOW_REGISTRATION = "0"
 $env:AUTO_COLLECT = "1"
+$env:APP_BASE_PATH = "/guobu"
+
+$Nginx = Get-ChildItem (Join-Path $Root "deploy\windows\nginx") -Recurse -Filter nginx.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($Nginx) {
+  $NginxPrefix = $Nginx.Directory.FullName
+  $NginxRunning = Get-Process nginx -ErrorAction SilentlyContinue
+  if (-not $NginxRunning) {
+    Start-Process -FilePath $Nginx.FullName -ArgumentList @("-p", $NginxPrefix, "-c", "conf/nginx.conf") -WorkingDirectory $NginxPrefix -WindowStyle Hidden
+  }
+}
 
 "[$(Get-Date -Format s)] Starting Guobu Hub" | Add-Content -LiteralPath $LogFile -Encoding utf8
 

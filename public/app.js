@@ -1,5 +1,6 @@
 const app = document.getElementById('app');
 const toastEl = document.getElementById('toast');
+const BASE_PATH = String(window.__BASE_PATH__ || '').replace(/\/$/, '');
 
 const state = {
   user: null,
@@ -63,7 +64,10 @@ async function api(path, options = {}) {
     config.headers = { 'Content-Type': 'application/json', ...(config.headers || {}) };
     config.body = JSON.stringify(config.body);
   }
-  const response = await fetch(path, config);
+  const requestPath = /^https?:\/\//i.test(path)
+    ? path
+    : `${BASE_PATH}${path.startsWith('/') ? path : `/${path}`}`;
+  const response = await fetch(requestPath, config);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const details = Array.isArray(payload.details) ? `：${payload.details.join('；')}` : '';

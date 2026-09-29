@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -840,7 +840,11 @@ async function handleRequest(db, req, res) {
     if (req.method !== 'GET' && req.method !== 'HEAD') throw httpError('不支持的方法', 405);
     const filePath = resolvePublicFile(url.pathname === '/' ? '/index.html' : url.pathname);
     if (!filePath) throw httpError('文件不存在', 404);
-    const data = await readFile(filePath);
+    let data = await readFile(filePath);
+    if (basename(filePath) === 'index.html') {
+      const basePath = String(process.env.APP_BASE_PATH || '').replace(/\/$/, '');
+      data = Buffer.from(data.toString('utf8').replaceAll('__APP_BASE_PATH__', basePath), 'utf8');
+    }
     const type = MIME_TYPES[extname(filePath).toLowerCase()] || 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': type, 'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=300' });
     res.end(req.method === 'HEAD' ? undefined : data);

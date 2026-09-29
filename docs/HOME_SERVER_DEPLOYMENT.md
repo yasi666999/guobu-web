@@ -13,7 +13,7 @@
 - 不需要路由器端口映射；
 - 不暴露家庭公网 IP。
 
-注意：Tailscale Funnel 当前仍是 beta，适合低流量网站。它只能公开 443、8443 和 10000 端口，但可以直接把公网 HTTPS 转发到本机 8787。
+注意：Tailscale Funnel 当前仍是 beta，适合低流量网站。它只能公开 443、8443 和 10000 端口，但可以把公网 HTTPS 转发到本机 Nginx 的 8080 端口。
 
 ### 1. 启动应用
 
@@ -29,7 +29,23 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\run-server.ps1
 http://127.0.0.1:8787
 ```
 
-### 2. 安装并开启 Funnel
+### 2. 安装 Nginx 单端口入口
+
+应用本身只监听 `127.0.0.1:8787`。Nginx 只监听 `127.0.0.1:8080`，并通过 `/guobu/` 前缀访问应用：
+
+```text
+http://127.0.0.1:8080/guobu/
+```
+
+安装并启动 Nginx：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\install-nginx.ps1
+```
+
+以后增加其他服务时，在 `deploy\windows\nginx.conf.template` 中增加新的 `location /服务名/`，仍然只需要公开 Nginx 的 8080 端口。
+
+### 3. 安装并开启 Funnel
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\windows\setup-tailscale-funnel.ps1
@@ -54,7 +70,13 @@ https://your-pc.tailnet-name.ts.net
 
 以后任何人无需安装 Tailscale，也可以访问这个地址。
 
-### 3. 设置开机启动
+应用地址：
+
+```text
+https://your-pc.tailnet-name.ts.net/guobu/
+```
+
+### 4. 设置开机启动
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\windows\install-startup.ps1
@@ -62,7 +84,7 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install-startup.ps1
 
 Windows 登录后会自动隐藏启动平台。
 
-### 4. 设置每日备份
+### 5. 设置每日备份
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy\windows\install-backup-task.ps1
@@ -129,3 +151,4 @@ https://随机名称.trycloudflare.com
 - 定期检查 `data\logs\server.log`；
 - 定期执行备份并复制到其他位置；
 - 重要生产数据建议使用 UPS，避免突然断电损坏文件。
+- 公网只开放 Tailscale Funnel 的 HTTPS 443，Funnel 转发到 Nginx 8080；应用 8787 只监听本机。

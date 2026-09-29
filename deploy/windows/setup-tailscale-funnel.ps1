@@ -38,8 +38,10 @@ if ($InstallOnly) {
 Write-Host "Please sign in to Tailscale in the browser window that opens."
 & $Tailscale up
 
-Write-Host "Enabling Tailscale Funnel on public HTTPS port 443 for local port 8787."
-& $Tailscale funnel 8787
+$LocalPort = if ($env:FUNNEL_LOCAL_PORT) { $env:FUNNEL_LOCAL_PORT } else { "8080" }
+
+Write-Host "Enabling Tailscale Funnel on public HTTPS port 443 for local Nginx port $LocalPort."
+& $Tailscale funnel $LocalPort
 
 Write-Host "Current Funnel status:"
 & $Tailscale funnel status
