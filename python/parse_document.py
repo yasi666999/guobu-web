@@ -379,6 +379,29 @@ def extract_amount(text: str) -> dict[str, dict[str, Any]]:
     return result
 
 
+def extract_cap_unit(text: str) -> tuple[str | None, str | None]:
+    rules = [
+        ("元/件", ["元/件", "每件", "每台", "每部"]),
+        ("元/人", ["元/人", "每人"]),
+        ("元/户", ["元/户", "每户"]),
+        ("元/辆", ["元/辆", "每辆"]),
+    ]
+    for label, keywords in rules:
+        for keyword in keywords:
+            index = text.find(keyword)
+            if index >= 0:
+                return label, text[max(0, index - 40): index + len(keyword) + 40]
+    return "元", "默认按元计"
+
+
+def extract_end_note(text: str) -> tuple[str | None, str | None]:
+    for keyword in ("额度用完", "资金用完", "先到先得", "提前截止", "预算用完"):
+        index = text.find(keyword)
+        if index >= 0:
+            return "额度用完提前截止", text[max(0, index - 40): index + len(keyword) + 50]
+    return None, None
+
+
 def infer_title(text: str, metadata: dict[str, Any], lines: list[str]) -> tuple[str | None, str | None]:
     title = clean_text(str(metadata.get("title", "")))
     if title:
@@ -436,6 +459,11 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
         fields["program"] = field(program, 0.88, program_quote or "")
 
     fields.update(extract_amount(text))
+    cap_unit, cap_unit_quote = extract_cap_unit(text)
+    fields["cap_unit"] = field(cap_unit, 0.65, cap_unit_quote or "")
+    end_note, end_note_quote = extract_end_note(text)
+    if end_note:
+        fields["end_note"] = field(end_note, 0.72, end_note_quote or "")
     fields.update(extract_dates(text))
 
     conditions = []

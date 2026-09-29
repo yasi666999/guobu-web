@@ -142,9 +142,14 @@ CREATE TABLE IF NOT EXISTS policies (
   id TEXT PRIMARY KEY,
   contribution_id TEXT NOT NULL UNIQUE REFERENCES contributions(id),
   title TEXT NOT NULL,
+  official_file_name TEXT,
+  doc_no TEXT,
   program TEXT,
   policy_level TEXT,
   issuer TEXT,
+  funding_source TEXT,
+  description TEXT,
+  end_note TEXT,
   jurisdiction_code TEXT,
   jurisdiction_name TEXT,
   status TEXT NOT NULL DEFAULT 'active'
@@ -164,6 +169,7 @@ CREATE TABLE IF NOT EXISTS subsidy_rules (
   rate REAL,
   fixed_amount REAL,
   cap_amount REAL,
+  cap_unit TEXT,
   conditions_json TEXT,
   created_at TEXT NOT NULL
 );

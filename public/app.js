@@ -293,8 +293,10 @@ function splitGeoName(name) {
   const text = String(name || '').replace(/\s+/g, '').replace(/／/g, '/');
   const provinceNames = ['内蒙古', '黑龙江', '新疆', '西藏', '广西', '宁夏', '北京', '天津', '河北', '山西', '辽宁', '吉林', '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', '湖北', '湖南', '广东', '海南', '重庆', '四川', '贵州', '云南', '陕西', '甘肃', '青海'];
   const province = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/)?.[1] || provinceNames.find((name) => text.includes(name)) || (text.includes('全国') ? '全国' : '');
-  const city = text.match(/([^/]+?市)/)?.[1] || '';
-  const district = text.match(/([^/]+?(?:区|县|旗))/)?.[1] || '';
+  const titleCities = [...text.matchAll(/([\u4e00-\u9fff]{2,4}市)/g)].map((match) => match[1]).filter((value) => !/(省|自治区|财政|政府|委员会|商务局|发展和改革)/.test(value));
+  const titleDistricts = [...text.matchAll(/([\u4e00-\u9fff]{2,8}(?:区|县|旗))/g)].map((match) => match[1]).filter((value) => !/(省|自治区|财政|政府|委员会|商务局|发展和改革|专区|换新|关于|取消|恢复|实施|通知|公告|年|月|日)/.test(value));
+  const city = text.match(/([^/]+?市)/)?.[1] || titleCities[0] || '';
+  const district = text.match(/([^/]+?(?:区|县|旗))/)?.[1] || titleDistricts[0] || '';
   return { province, city, district };
 }
 
@@ -338,7 +340,7 @@ function renderInterpretationPreview(document) {
   const fields = document.extracted?.fields || {};
   const evidence = document.extracted?.evidence || [];
   const warnings = document.extracted?.warnings || [];
-  const geo = splitGeoName(fields.jurisdiction_name?.value);
+  const geo = splitGeoName(`${fields.jurisdiction_name?.value || ''} ${fields.title?.value || ''}`);
   const levelLabel = { high: '高度相关', medium: '可能相关', low: '弱相关', none: '未匹配' }[relevance.level] || '未匹配';
   return `
     <section class="card">
@@ -351,10 +353,10 @@ function renderInterpretationPreview(document) {
         <td>${esc(geo.province || '—')}</td>
         <td>${esc(geo.city || '—')}</td>
         <td>${fields.rate?.value != null ? `${esc(fields.rate.value)}%` : '—'}</td>
-        <td>${fields.cap_amount?.value != null ? `${esc(fields.cap_amount.value)} 元` : '—'}</td>
+        <td>${fields.cap_amount?.value != null ? `${esc(fields.cap_amount.value)} ${esc(fields.cap_unit?.value || '元')}` : '—'}</td>
         <td>${esc(fields.effective_from?.value || '—')}</td>
-        <td>${esc(fields.effective_to?.value || '—')}</td>
-        <td>${document.url ? `<a href="${esc(document.url)}" target="_blank" rel="noreferrer">查看原文</a>` : '—'}</td>
+        <td>${esc(fields.effective_to?.value || '—')}${fields.end_note?.value ? `<div class="meta">${esc(fields.end_note.value)}</div>` : ''}</td>
+        <td><div class="title truncate">${esc(fields.title?.value || document.title || '—')}</div>${fields.doc_no?.value ? `<div class="meta">${esc(fields.doc_no.value)}</div>` : ''}${document.url ? `<a class="meta truncate" href="${esc(document.url)}" target="_blank" rel="noreferrer">${esc(document.url)}</a>` : ''}</td>
       </tr></tbody></table></div>
       ${relevance.summary ? `<div class="notice ${relevance.isRelated ? 'success' : 'warn'}" style="margin-top:12px">${esc(relevance.summary)}</div>` : ''}
       ${warnings.length ? `<div class="notice warn" style="margin-top:10px">${warnings.map(esc).join('；')}</div>` : ''}
@@ -402,6 +404,7 @@ function renderSourceDashboard() {
     </section>
     <section class="card">
       <div class="card-title"><div><h2>筛选已有数据</h2><p>按省、市、区县、品类和相关性内容筛选。</p></div></div>
+      <div class="notice success" style="margin-bottom:14px"><strong>当前筛选结果：</strong>共 ${esc(list.length)} 条未过期政策。选择下方条件后点击“筛选看板”。</div>
       <form id="source-dashboard-filter-form" class="form-grid">
         <div class="field"><label>省 / 直辖市</label><select name="province">${option(state.facets.provinces || [], filters.province)}</select></div>
         <div class="field"><label>市</label><select name="city">${option(state.facets.cities || [], filters.city)}</select></div>
@@ -421,7 +424,7 @@ function renderSourceDashboard() {
     <section class="card">
       <div class="card-title"><div><h2>已入库相关内容</h2><p>按省市区、品类和相关内容筛选后的政策列表。</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴比例</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}</td><td><div class="title">${esc(item.title)}</div><div class="meta truncate">${esc(item.contentSnippet || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${item.rate != null ? `${esc(item.rate)}%` : '—'}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} 元` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}</td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">查看原文</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="11" class="empty">没有匹配内容。</td></tr>'}
+      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}</td><td><div class="title">${esc(item.title)}</div><div class="meta truncate">${esc(item.contentSnippet || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}${item.description ? `<div class="meta truncate">${esc(item.description)}</div>` : ''}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${item.rate != null ? `${esc(item.rate)}%` : '—'}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}${item.endNote ? `<div class="meta">${esc(item.endNote)}</div>` : ''}</td><td><div class="title truncate">${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a class="meta truncate" href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">${esc(item.sourceUrl)}</a>` : ''}</td></tr>`).join('') : '<tr><td colspan="11" class="empty">没有匹配内容。</td></tr>'}
       </tbody></table></div>
     </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }

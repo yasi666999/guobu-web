@@ -51,6 +51,11 @@ function migrateDatabase(db) {
   ensureColumn(db, 'sources', 'last_run_status', 'TEXT');
   ensureColumn(db, 'sources', 'last_error', 'TEXT');
   ensureColumn(db, 'policies', 'funding_source', 'TEXT');
+  ensureColumn(db, 'policies', 'official_file_name', 'TEXT');
+  ensureColumn(db, 'policies', 'doc_no', 'TEXT');
+  ensureColumn(db, 'policies', 'description', 'TEXT');
+  ensureColumn(db, 'policies', 'end_note', 'TEXT');
+  ensureColumn(db, 'subsidy_rules', 'cap_unit', 'TEXT');
 }
 
 export function parseJson(value, fallback = null) {

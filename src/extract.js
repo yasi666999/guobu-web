@@ -217,6 +217,8 @@ export function extractedFieldSummary(parsed) {
   const fields = parsed?.fields || {};
   return {
     title: fieldValue(parsed, 'title') || '',
+    officialFileName: fieldValue(parsed, 'title') || '',
+    docNo: fieldValue(parsed, 'doc_no') || '',
     docNo: fieldValue(parsed, 'doc_no') || '',
     issuer: fieldValue(parsed, 'issuer') || '',
     fundingSource: fieldValue(parsed, 'funding_source') || '',
@@ -227,6 +229,11 @@ export function extractedFieldSummary(parsed) {
     amountValue: fieldValue(parsed, 'amount_value') ?? null,
     rate: fieldValue(parsed, 'rate') ?? null,
     capAmount: fieldValue(parsed, 'cap_amount') ?? null,
+    capUnit: fieldValue(parsed, 'cap_unit') || '元',
+    description: Array.isArray(fieldValue(parsed, 'conditions'))
+      ? fieldValue(parsed, 'conditions').join('；')
+      : String(fieldValue(parsed, 'conditions') || ''),
+    endNote: fieldValue(parsed, 'end_note') || '',
     effectiveFrom: fieldValue(parsed, 'effective_from') || '',
     effectiveTo: fieldValue(parsed, 'effective_to') || '',
   };
