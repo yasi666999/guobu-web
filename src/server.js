@@ -554,6 +554,22 @@ function statsFor(db) {
   };
 }
 
+function geoParts(name) {
+  const text = String(name || '').replace(/\s+/g, '').replace(/[／]/g, '/');
+  const provinceMatch = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/);
+  const cityMatch = text.match(/([^/]+?市)/);
+  const districtMatch = text.match(/([^/]+?(?:区|县|旗))/);
+  return {
+    province: provinceMatch?.[1] || (text.includes('全国') ? '全国' : ''),
+    city: cityMatch?.[1] || '',
+    district: districtMatch?.[1] || '',
+  };
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
 async function handleApi(db, req, res, url) {
   const { pathname } = url;
   if (pathname === '/api/health' && req.method === 'GET') return jsonResponse(res, 200, { ok: true, time: nowIso() });
@@ -676,13 +692,14 @@ async function handleApi(db, req, res, url) {
     const timestamp = nowIso();
     db.prepare(`
       INSERT INTO sources (
-        id, name, level, jurisdiction_code, jurisdiction_name, base_url, listing_url, source_type,
-        access_method, frequency, enabled, compliance_note, created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, name, level, jurisdiction_code, jurisdiction_name, category, keywords, base_url, listing_url, source_type,
+        access_method, frequency, interval_minutes, enabled, compliance_note, created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, String(fields.name).trim(), fields.level, dbValue(fields.jurisdictionCode), dbValue(fields.jurisdictionName),
-      dbValue(normalizeUrl(fields.baseUrl)), dbValue(normalizeUrl(fields.listingUrl)), fields.sourceType,
-      fields.accessMethod || 'manual', fields.frequency || 'weekly', fields.enabled === '0' || fields.enabled === false ? 0 : 1,
+      dbValue(fields.category), dbValue(fields.keywords), dbValue(normalizeUrl(fields.baseUrl)), dbValue(normalizeUrl(fields.listingUrl)), fields.sourceType,
+      fields.accessMethod || 'scheduled', fields.frequency || 'daily', dbValue(fields.intervalMinutes),
+      fields.enabled === '0' || fields.enabled === false ? 0 : 1,
       dbValue(fields.complianceNote), writer.id, timestamp, timestamp,
     );
     addEvent(db, { entityType: 'source', entityId: id, actorId: writer.id, action: 'created' });
@@ -699,19 +716,23 @@ async function handleApi(db, req, res, url) {
       level: fields.level ?? source.level,
       jurisdictionCode: fields.jurisdictionCode ?? source.jurisdiction_code,
       jurisdictionName: fields.jurisdictionName ?? source.jurisdiction_name,
+      category: fields.category ?? source.category,
+      keywords: fields.keywords ?? source.keywords,
       baseUrl: fields.baseUrl ?? source.base_url,
       listingUrl: fields.listingUrl ?? source.listing_url,
       sourceType: fields.sourceType ?? source.source_type,
       accessMethod: fields.accessMethod ?? source.access_method,
       frequency: fields.frequency ?? source.frequency,
+      intervalMinutes: fields.intervalMinutes ?? source.interval_minutes,
       enabled: fields.enabled == null ? source.enabled : (fields.enabled === '0' || fields.enabled === false ? 0 : 1),
       complianceNote: fields.complianceNote ?? source.compliance_note,
     };
     db.prepare(`
-      UPDATE sources SET name = ?, level = ?, jurisdiction_code = ?, jurisdiction_name = ?, base_url = ?, listing_url = ?,
-        source_type = ?, access_method = ?, frequency = ?, enabled = ?, compliance_note = ?, updated_at = ?
+      UPDATE sources SET name = ?, level = ?, jurisdiction_code = ?, jurisdiction_name = ?, category = ?, keywords = ?,
+        base_url = ?, listing_url = ?, source_type = ?, access_method = ?, frequency = ?, interval_minutes = ?,
+        enabled = ?, compliance_note = ?, updated_at = ?
       WHERE id = ?
-    `).run(next.name, next.level, dbValue(next.jurisdictionCode), dbValue(next.jurisdictionName), dbValue(normalizeUrl(next.baseUrl)), dbValue(normalizeUrl(next.listingUrl)), next.sourceType, next.accessMethod, next.frequency, next.enabled, dbValue(next.complianceNote), nowIso(), source.id);
+    `).run(next.name, next.level, dbValue(next.jurisdictionCode), dbValue(next.jurisdictionName), dbValue(next.category), dbValue(next.keywords), dbValue(normalizeUrl(next.baseUrl)), dbValue(normalizeUrl(next.listingUrl)), next.sourceType, next.accessMethod, next.frequency, dbValue(next.intervalMinutes), next.enabled, dbValue(next.complianceNote), nowIso(), source.id);
     addEvent(db, { entityType: 'source', entityId: source.id, actorId: writer.id, action: 'updated' });
     return jsonResponse(res, 200, { source: sourceView(getSource(db, source.id)) });
   }
@@ -853,6 +874,27 @@ async function handleApi(db, req, res, url) {
   }
 
   if (pathname === '/api/source-dashboard' && req.method === 'GET') {
+    const province = String(url.searchParams.get('province') || '').trim();
+    const city = String(url.searchParams.get('city') || '').trim();
+    const district = String(url.searchParams.get('district') || '').trim();
+    const category = String(url.searchParams.get('category') || '').trim();
+    const q = String(url.searchParams.get('q') || '').trim();
+    const sourceFilters = [];
+    const sourceValues = [];
+    for (const [field, value] of [['province', province], ['city', city], ['district', district]]) {
+      if (!value) continue;
+      sourceFilters.push('s.jurisdiction_name LIKE ?');
+      sourceValues.push(`%${value}%`);
+    }
+    if (category) {
+      sourceFilters.push('s.category LIKE ?');
+      sourceValues.push(`%${category}%`);
+    }
+    if (q) {
+      sourceFilters.push('(s.name LIKE ? OR s.keywords LIKE ? OR s.listing_url LIKE ?)');
+      sourceValues.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    const sourceWhere = sourceFilters.length ? `WHERE ${sourceFilters.join(' AND ')}` : '';
     const rows = db.prepare(`
       SELECT s.*,
         COUNT(DISTINCT d.id) AS document_count,
@@ -861,15 +903,70 @@ async function handleApi(db, req, res, url) {
       FROM sources s
       LEFT JOIN documents d ON d.source_id = s.id
       LEFT JOIN contributions c ON c.document_id = d.id AND c.status = 'approved'
+      ${sourceWhere}
       GROUP BY s.id
       ORDER BY s.updated_at DESC
-    `).all();
+    `).all(...sourceValues);
+
+    const policyFilters = [];
+    const policyValues = [];
+    for (const value of [province, city, district]) {
+      if (value) {
+        policyFilters.push('p.jurisdiction_name LIKE ?');
+        policyValues.push(`%${value}%`);
+      }
+    }
+    if (category) {
+      policyFilters.push('r.category LIKE ?');
+      policyValues.push(`%${category}%`);
+    }
+    if (q) {
+      policyFilters.push(`(p.title LIKE ? OR p.issuer LIKE ? OR p.program LIKE ? OR p.source_url LIKE ? OR EXISTS (
+        SELECT 1 FROM evidence e WHERE e.policy_id = p.id AND e.quote LIKE ?
+      ))`);
+      policyValues.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    const policyWhere = policyFilters.length ? `WHERE ${policyFilters.join(' AND ')}` : '';
+    const policies = db.prepare(`
+      SELECT p.*, r.category, r.amount_type, r.rate, r.fixed_amount, r.cap_amount,
+        (SELECT e.quote FROM evidence e WHERE e.policy_id = p.id LIMIT 1) AS content_snippet
+      FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id
+      ${policyWhere}
+      ORDER BY p.updated_at DESC LIMIT 500
+    `).all(...policyValues).map((row) => ({
+      id: row.id,
+      title: row.title,
+      program: row.program,
+      level: row.policy_level,
+      issuer: row.issuer,
+      jurisdictionName: row.jurisdiction_name,
+      geo: geoParts(row.jurisdiction_name),
+      status: row.status,
+      effectiveFrom: row.effective_from,
+      effectiveTo: row.effective_to,
+      sourceUrl: row.source_url,
+      category: row.category,
+      amountType: row.amount_type,
+      rate: row.rate,
+      fixedAmount: row.fixed_amount,
+      capAmount: row.cap_amount,
+      contentSnippet: row.content_snippet,
+    }));
+
+    const allPolicies = db.prepare('SELECT jurisdiction_name, category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
+    const facets = {
+      provinces: unique(allPolicies.map((item) => geoParts(item.jurisdiction_name).province)),
+      cities: unique(allPolicies.map((item) => geoParts(item.jurisdiction_name).city)),
+      districts: unique(allPolicies.map((item) => geoParts(item.jurisdiction_name).district)),
+      categories: unique(allPolicies.map((item) => item.category)),
+    };
+
     return jsonResponse(res, 200, { sources: rows.map((row) => ({
       ...sourceView(row),
       documentCount: row.document_count,
       importedCount: row.imported_count,
       lastDocumentAt: row.last_document_at,
-    })) });
+    })), policies, facets, filters: { province, city, district, category, q } });
   }
 
   if (pathname === '/api/import' && req.method === 'POST') {

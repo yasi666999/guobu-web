@@ -45,6 +45,11 @@ function migrateDatabase(db) {
   ensureColumn(db, 'sessions', 'csrf_token', 'TEXT');
   ensureColumn(db, 'users', 'last_login_at', 'TEXT');
   ensureColumn(db, 'users', 'password_changed_at', 'TEXT');
+  ensureColumn(db, 'sources', 'category', 'TEXT');
+  ensureColumn(db, 'sources', 'keywords', 'TEXT');
+  ensureColumn(db, 'sources', 'interval_minutes', 'INTEGER');
+  ensureColumn(db, 'sources', 'last_run_status', 'TEXT');
+  ensureColumn(db, 'sources', 'last_error', 'TEXT');
 }
 
 export function parseJson(value, fallback = null) {
@@ -102,6 +107,8 @@ export function contributionView(row, db) {
     issuer: row.issuer,
     jurisdictionCode: row.jurisdiction_code,
     jurisdictionName: row.jurisdiction_name,
+    category: row.category,
+    keywords: row.keywords,
     category: row.category,
     amountType: row.amount_type,
     amountValue: row.amount_value,
@@ -163,6 +170,9 @@ export function sourceView(row) {
     frequency: row.frequency,
     enabled: Boolean(row.enabled),
     complianceNote: row.compliance_note,
+    intervalMinutes: row.interval_minutes,
+    lastRunStatus: row.last_run_status,
+    lastError: row.last_error,
     lastFetchedAt: row.last_fetched_at,
     nextFetchAt: row.next_fetch_at,
     createdBy: row.created_by,

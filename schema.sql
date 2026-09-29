@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS sources (
     CHECK (level IN ('national', 'province', 'city', 'district', 'other')),
   jurisdiction_code TEXT,
   jurisdiction_name TEXT,
+  category TEXT,
+  keywords TEXT,
   base_url TEXT,
   listing_url TEXT,
   source_type TEXT NOT NULL
@@ -53,6 +55,9 @@ CREATE TABLE IF NOT EXISTS sources (
     CHECK (frequency IN ('manual', 'daily', 'weekly', 'monthly')),
   enabled INTEGER NOT NULL DEFAULT 1,
   compliance_note TEXT,
+  interval_minutes INTEGER,
+  last_run_status TEXT,
+  last_error TEXT,
   last_fetched_at TEXT,
   next_fetch_at TEXT,
   created_by TEXT REFERENCES users(id),

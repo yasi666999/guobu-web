@@ -16,6 +16,8 @@ const state = {
   importRuns: [],
   sourceDashboard: [],
   policies: [],
+  facets: { provinces: [], cities: [], districts: [], categories: [] },
+  filters: { province: '', city: '', district: '', category: '', q: '' },
   preview: null,
   policyQuery: '',
   selected: null,
@@ -101,7 +103,8 @@ async function refresh() {
   if (importRuns) state.importRuns = importRuns.importRuns || [];
   if (invites) state.invites = invites.invites || [];
   state.sourceDashboard = sourceDashboard.sources || [];
-  state.policies = policies.policies || [];
+  state.policies = sourceDashboard.policies || policies.policies || [];
+  state.facets = sourceDashboard.facets || state.facets;
 }
 
 function renderAuth() {
@@ -218,6 +221,38 @@ function renderSources() {
     </section>`, '数据源台账', '把“去哪里找、多久找一次、是否允许采集”变成可执行配置。');
 }
 
+function renderSourcesV2() {
+  const intervalLabel = (source) => source.intervalMinutes
+    ? `${source.intervalMinutes} 分钟`
+    : { daily: '每天', weekly: '每周', monthly: '每月', manual: '手动' }[source.frequency] || source.frequency;
+  return shell(`
+    <section class="card">
+      <div class="card-title"><div><h2>定时抓取任务</h2><p>配置网站栏目、抓取间隔、地区和关键词，系统会自动抓取并解析。</p></div></div>
+      <form id="source-form" class="form-grid">
+        <div class="field"><label>任务名称</label><input name="name" required placeholder="例如：广东省商务厅政策公告"></div>
+        <div class="field"><label>网站栏目 URL</label><input name="listingUrl" type="url" required placeholder="https://..."></div>
+        <div class="field"><label>行政层级</label><select name="level"><option value="national">国家级</option><option value="province">省级</option><option value="city">市级</option><option value="district">区县级</option><option value="other">其他</option></select></div>
+        <div class="field"><label>地区</label><input name="jurisdictionName" placeholder="广东省 / 广州市"></div>
+        <div class="field"><label>品类</label><input name="category" placeholder="家电、汽车、数码、农机"></div>
+        <div class="field"><label>关注关键词</label><input name="keywords" placeholder="以旧换新, 补贴, 国补"></div>
+        <div class="field"><label>抓取间隔</label><select name="intervalMinutes"><option value="30">30 分钟</option><option value="60">1 小时</option><option value="360">6 小时</option><option value="720">12 小时</option><option value="1440" selected>每天</option><option value="10080">每周</option></select></div>
+        <div class="field"><label>启用状态</label><select name="enabled"><option value="1">启用</option><option value="0">停用</option></select></div>
+        <input type="hidden" name="accessMethod" value="scheduled">
+        <input type="hidden" name="frequency" value="daily">
+        <input type="hidden" name="sourceType" value="html_listing">
+        <div class="field full"><label>站点首页（可选）</label><input name="baseUrl" type="url" placeholder="https://..."></div>
+        <div class="field full"><label>备注</label><textarea name="complianceNote" placeholder="记录来源说明、访问频率限制和负责人。"></textarea></div>
+        <div class="full actions"><button class="btn primary" type="submit">保存定时任务</button></div>
+      </form>
+    </section>
+    <section class="card">
+      <div class="card-title"><div><h2>定时任务列表</h2><p>${state.sources.length} 个任务</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>任务 / 地址</th><th>地区 / 品类</th><th>间隔</th><th>下次执行</th><th>最近状态</th><th>操作</th></tr></thead><tbody>
+      ${state.sources.length ? state.sources.map((source) => `<tr><td><div class="title">${esc(source.name)}</div><div class="meta truncate">${esc(source.listingUrl || '未配置 URL')}</div></td><td>${esc(source.jurisdictionName || '—')}<div class="meta">${esc(source.category || '—')}</div></td><td>${esc(intervalLabel(source))}</td><td>${formatTime(source.nextFetchAt)}</td><td>${source.enabled ? '<span class="badge approved">启用</span>' : '<span class="badge rejected">停用</span>'}${source.lastRunStatus ? `<div class="meta">${esc(source.lastRunStatus === 'success' ? '成功' : '失败')} · ${formatTime(source.lastFetchedAt)}</div>` : ''}${source.lastError ? `<div class="meta">${esc(source.lastError)}</div>` : ''}</td><td><div class="list-actions"><select data-action="set-source-interval" data-id="${esc(source.id)}" title="设置抓取间隔"><option value="">设置间隔</option><option value="30">30 分钟</option><option value="60">1 小时</option><option value="360">6 小时</option><option value="720">12 小时</option><option value="1440">每天</option><option value="10080">每周</option></select><button class="btn small primary" data-action="poll-source" data-id="${esc(source.id)}">立即运行</button><button class="btn small" data-action="toggle-source" data-id="${esc(source.id)}" data-enabled="${source.enabled ? '1' : '0'}">${source.enabled ? '停用' : '启用'}</button></div></td></tr>`).join('') : '<tr><td colspan="6" class="empty">还没有定时任务。</td></tr>'}
+      </tbody></table></div>
+    </section>`, '定时抓取任务', '设置网站抓取周期，自动解析国补相关内容');
+}
+
 function renderCollect() {
   return shell(`
     <div class="grid two">
@@ -307,8 +342,9 @@ function renderCollectV2() {
 }
 
 function renderSourceDashboard() {
-  const query = state.policyQuery || '';
+  const filters = state.filters || { province: '', city: '', district: '', category: '', q: '' };
   const list = state.policies || [];
+  const option = (values, selected) => `<option value="">全部</option>${values.map((value) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(value)}</option>`).join('')}`;
   return shell(`
     <section class="card">
       <div class="card-title"><div><h2>已有数据源看板</h2><p>查看数据源采集情况、最近更新和已入库政策。</p></div></div>
@@ -320,16 +356,26 @@ function renderSourceDashboard() {
       </div>
     </section>
     <section class="card">
+      <div class="card-title"><div><h2>筛选已有数据</h2><p>按省、市、区县、品类和相关性内容筛选。</p></div></div>
+      <form id="source-dashboard-filter-form" class="form-grid">
+        <div class="field"><label>省 / 直辖市</label><select name="province">${option(state.facets.provinces || [], filters.province)}</select></div>
+        <div class="field"><label>市</label><select name="city">${option(state.facets.cities || [], filters.city)}</select></div>
+        <div class="field"><label>区县</label><select name="district">${option(state.facets.districts || [], filters.district)}</select></div>
+        <div class="field"><label>品类</label><select name="category">${option(state.facets.categories || [], filters.category)}</select></div>
+        <div class="field full"><label>相关内容关键词</label><input name="q" value="${esc(filters.q || '')}" placeholder="例如：以旧换新、汽车、补贴、家电"></div>
+        <div class="full actions"><button class="btn primary" type="submit">筛选看板</button><button class="btn" type="button" data-action="clear-dashboard-filter">清空筛选</button></div>
+      </form>
+    </section>
+    <section class="card">
       <div class="card-title"><div><h2>数据源状态</h2><p>来源、采集频率、文档数和已入库政策数。</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>来源</th><th>层级 / 地区</th><th>类型</th><th>采集</th><th>文档</th><th>已入库</th><th>最近更新</th></tr></thead><tbody>
-      ${state.sourceDashboard.length ? state.sourceDashboard.map((item) => `<tr><td><div class="title">${esc(item.name)}</div><div class="meta truncate">${esc(item.listingUrl || item.baseUrl || '')}</div></td><td>${esc(LEVEL_LABELS[item.level] || item.level)}<div class="meta">${esc(item.jurisdictionName || '—')}</div></td><td>${esc(item.sourceType)}</td><td>${esc(item.frequency)}<div class="meta">${formatTime(item.lastFetchedAt)}</div></td><td>${esc(item.documentCount || 0)}</td><td>${esc(item.importedCount || 0)}</td><td>${formatTime(item.lastDocumentAt)}</td></tr>`).join('') : '<tr><td colspan="7" class="empty">还没有数据源。</td></tr>'}
+      ${state.sourceDashboard.length ? state.sourceDashboard.map((item) => `<tr><td><div class="title">${esc(item.name)}</div><div class="meta truncate">${esc(item.listingUrl || item.baseUrl || '')}</div></td><td>${esc(LEVEL_LABELS[item.level] || item.level)}<div class="meta">${esc(item.jurisdictionName || '—')}</div></td><td>${esc(item.sourceType)}</td><td>${esc(item.intervalMinutes ? `${item.intervalMinutes} 分钟` : item.frequency)}<div class="meta">${formatTime(item.lastFetchedAt)}</div></td><td>${esc(item.documentCount || 0)}</td><td>${esc(item.importedCount || 0)}</td><td>${formatTime(item.lastDocumentAt)}</td></tr>`).join('') : '<tr><td colspan="7" class="empty">还没有数据源。</td></tr>'}
       </tbody></table></div>
     </section>
     <section class="card">
-      <div class="card-title"><div><h2>搜索已入库政策</h2><p>按标题、发布机关、地区、品类和来源链接搜索。</p></div></div>
-      <form id="policy-search-form" class="actions"><input name="q" value="${esc(query)}" placeholder="输入关键词，例如：家电、广东、以旧换新" style="max-width:420px"><button class="btn primary" type="submit">搜索</button></form>
-      <div class="table-wrap"><table><thead><tr><th>政策</th><th>地区 / 品类</th><th>金额规则</th><th>有效期</th><th>来源</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.issuer || '')}</div></td><td>${esc(item.jurisdictionName || '—')}<div class="meta">${esc(item.category || '—')}</div></td><td>${item.rate != null ? `${esc(item.rate)}%` : ''}${item.capAmount != null ? ` · 上限 ${esc(item.capAmount)} 元` : ''}${item.rate == null && item.capAmount == null ? '—' : ''}</td><td>${esc(item.effectiveFrom || '—')} → ${esc(item.effectiveTo || '—')}</td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">官方原文</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="5" class="empty">没有匹配政策。</td></tr>'}
+      <div class="card-title"><div><h2>已入库相关内容</h2><p>按省市区、品类和相关内容筛选后的政策列表。</p></div></div>
+      <div class="table-wrap"><table><thead><tr><th>省 / 市 / 区</th><th>品类</th><th>相关内容</th><th>政策</th><th>金额规则</th><th>来源</th></tr></thead><tbody>
+      ${list.length ? list.map((item) => `<tr><td>${esc(item.geo?.province || '—')}<div class="meta">${esc(item.geo?.city || '')}${item.geo?.district ? ` / ${esc(item.geo.district)}` : ''}</div></td><td>${esc(item.category || '—')}</td><td><div class="title">${esc(item.title)}</div><div class="meta truncate">${esc(item.contentSnippet || item.content || '')}</div></td><td>${esc(item.issuer || '')}<div class="meta">${esc(item.effectiveFrom || '—')} → ${esc(item.effectiveTo || '—')}</div></td><td>${item.rate != null ? `${esc(item.rate)}%` : ''}${item.capAmount != null ? ` · 上限 ${esc(item.capAmount)} 元` : ''}${item.rate == null && item.capAmount == null ? '—' : ''}</td><td>${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">官方原文</a>` : '—'}</td></tr>`).join('') : '<tr><td colspan="6" class="empty">没有匹配内容。</td></tr>'}
       </tbody></table></div>
     </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }
@@ -479,7 +525,7 @@ function renderDetail() {
 
 function render() {
   if (!state.user) return renderAuth();
-  if (state.view === 'sources') app.innerHTML = renderSources();
+  if (state.view === 'sources') app.innerHTML = renderSourcesV2();
   else if (state.view === 'source-dashboard') app.innerHTML = renderSourceDashboard();
   else app.innerHTML = renderCollectV2();
 }
@@ -522,6 +568,17 @@ async function handleAction(action, target) {
   }
   if (action === 'discard-preview') {
     state.preview = null;
+    render();
+    return;
+  }
+  if (action === 'clear-dashboard-filter') {
+    state.filters = { province: '', city: '', district: '', category: '', q: '' };
+    state.policyQuery = '';
+    const data = await api('/api/source-dashboard');
+    state.sourceDashboard = data.sources || [];
+    state.policies = data.policies || [];
+    state.facets = data.facets || state.facets;
+    state.view = 'source-dashboard';
     render();
     return;
   }
@@ -604,6 +661,16 @@ async function handleAction(action, target) {
       toast(`采集完成，新发现 ${result.discovered} 条候选链接`, 'success');
       await refresh(); render();
     } catch (error) { toast(error.message, 'error'); target.disabled = false; target.textContent = '立即采集'; }
+    return;
+  }
+  if (action === 'toggle-source') {
+    const nextEnabled = target.dataset.enabled === '1' ? '0' : '1';
+    try {
+      await api(`/api/sources/${target.dataset.id}`, { method: 'PATCH', body: { enabled: nextEnabled } });
+      toast(nextEnabled === '1' ? '任务已启用' : '任务已停用', 'success');
+      await refresh();
+      render();
+    } catch (error) { toast(error.message, 'error'); }
     return;
   }
   if (action === 'fetch-document') {
@@ -698,12 +765,16 @@ app.addEventListener('submit', async (event) => {
       window.alert(`邀请码：${data.invite.code}\n角色：${data.invite.role}\n请发送给对应成员。`);
       await refresh(); render(); return;
     }
-    if (form.id === 'policy-search-form') {
+    if (form.id === 'source-dashboard-filter-form') {
       const formData = new FormData(form);
-      const q = String(formData.get('q') || '');
-      state.policyQuery = q;
-      const data = await api(`/api/policies${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+      const filters = Object.fromEntries(['province', 'city', 'district', 'category', 'q'].map((key) => [key, String(formData.get(key) || '')]));
+      state.filters = filters;
+      state.policyQuery = filters.q;
+      const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+      const data = await api(`/api/source-dashboard${params.size ? `?${params}` : ''}`);
+      state.sourceDashboard = data.sources || [];
       state.policies = data.policies || [];
+      state.facets = data.facets || state.facets;
       state.view = 'source-dashboard';
       render();
       return;
@@ -712,10 +783,24 @@ app.addEventListener('submit', async (event) => {
 });
 
 app.addEventListener('change', async (event) => {
-  const target = event.target.closest('[data-action="change-role"]');
-  if (!target) return;
-  try { await api(`/api/users/${target.dataset.id}`, { method: 'PATCH', body: { role: target.value } }); toast('角色已更新', 'success'); await refresh(); render(); }
-  catch (error) { toast(error.message, 'error'); }
+  const roleTarget = event.target.closest('[data-action="change-role"]');
+  if (roleTarget) {
+    try { await api(`/api/users/${roleTarget.dataset.id}`, { method: 'PATCH', body: { role: roleTarget.value } }); toast('角色已更新', 'success'); await refresh(); render(); }
+    catch (error) { toast(error.message, 'error'); }
+    return;
+  }
+  const intervalTarget = event.target.closest('[data-action="set-source-interval"]');
+  if (intervalTarget && intervalTarget.value) {
+    try {
+      await api(`/api/sources/${intervalTarget.dataset.id}`, {
+        method: 'PATCH',
+        body: { intervalMinutes: Number(intervalTarget.value), accessMethod: 'scheduled', frequency: 'daily', enabled: '1' },
+      });
+      toast('抓取间隔已更新', 'success');
+      await refresh();
+      render();
+    } catch (error) { toast(error.message, 'error'); }
+  }
 });
 
 app.addEventListener('input', (event) => {

@@ -141,33 +141,46 @@ export async function pollSource(db, sourceId, actorId = null) {
   if (!source) throw new Error('数据源不存在');
   if (!source.listing_url) throw new Error('该数据源没有配置栏目或 API 地址');
   if (!source.enabled) throw new Error('该数据源已停用');
-
-  const result = await fetchAndStore(db, source.listing_url, {
-    sourceId,
-    actorId,
-    title: source.name,
-    parse: true,
-  });
-  const document = db.prepare('SELECT * FROM documents WHERE id = ?').get(result.documentId);
-  let discovered = 0;
-  if (document?.extracted_json) {
-    try {
-      const parsed = JSON.parse(document.extracted_json);
-      const candidates = extractCandidateLinks(parsed, source.listing_url);
-      discovered = createDiscoveredDocuments(db, sourceId, null, candidates);
-    } catch {
-      discovered = 0;
+  try {
+    const result = await fetchAndStore(db, source.listing_url, {
+      sourceId,
+      actorId,
+      title: source.name,
+      parse: true,
+    });
+    const document = db.prepare('SELECT * FROM documents WHERE id = ?').get(result.documentId);
+    let discovered = 0;
+    if (document?.extracted_json) {
+      try {
+        const parsed = JSON.parse(document.extracted_json);
+        const candidates = extractCandidateLinks(parsed, source.listing_url);
+        discovered = createDiscoveredDocuments(db, sourceId, null, candidates);
+      } catch {
+        discovered = 0;
+      }
     }
+    const timestamp = nowIso();
+    const next = nextFetchDate(source);
+    db.prepare(`
+      UPDATE sources SET last_fetched_at = ?, next_fetch_at = ?, last_run_status = 'success', last_error = NULL, updated_at = ? WHERE id = ?
+    `).run(timestamp, next, timestamp, sourceId);
+    return { documentId: result.documentId, duplicate: result.duplicate, discovered, nextFetchAt: next };
+  } catch (error) {
+    const timestamp = nowIso();
+    const next = nextFetchDate(source);
+    db.prepare(`
+      UPDATE sources SET next_fetch_at = ?, last_run_status = 'failed', last_error = ?, updated_at = ? WHERE id = ?
+    `).run(next, error.message, timestamp, sourceId);
+    throw error;
   }
-  const timestamp = nowIso();
-  const next = nextFetchDate(source.frequency);
-  db.prepare('UPDATE sources SET last_fetched_at = ?, next_fetch_at = ?, updated_at = ? WHERE id = ?')
-    .run(timestamp, next, timestamp, sourceId);
-  return { documentId: result.documentId, duplicate: result.duplicate, discovered, nextFetchAt: next };
 }
 
-export function nextFetchDate(frequency) {
-  const intervalMs = {
+export function nextFetchDate(sourceOrFrequency) {
+  const source = typeof sourceOrFrequency === 'object' ? sourceOrFrequency : null;
+  const frequency = source ? source.frequency : sourceOrFrequency;
+  const intervalMs = source?.interval_minutes
+    ? Number(source.interval_minutes) * 60_000
+    : {
     daily: 86400_000,
     weekly: 7 * 86400_000,
     monthly: 30 * 86400_000,
@@ -192,11 +205,10 @@ export async function runDueCollections(db, limit = 3) {
       results.push({ sourceId: source.id, ok: true, result: await pollSource(db, source.id, null) });
     } catch (error) {
       const timestamp = nowIso();
-      db.prepare('UPDATE sources SET next_fetch_at = ?, updated_at = ? WHERE id = ?')
-        .run(nextFetchDate(source.frequency), timestamp, source.id);
+      db.prepare('UPDATE sources SET next_fetch_at = ?, last_run_status = ?, last_error = ?, updated_at = ? WHERE id = ?')
+        .run(nextFetchDate(source), 'failed', error.message, timestamp, source.id);
       results.push({ sourceId: source.id, ok: false, error: error.message });
     }
   }
   return results;
 }
-
