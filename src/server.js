@@ -995,12 +995,16 @@ async function handleApi(db, req, res, url) {
       contentSnippet: row.content_snippet,
     }));
 
-    const allPolicies = db.prepare('SELECT p.jurisdiction_name, p.title, p.source_url, r.category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
+    const allPolicies = db.prepare('SELECT p.status, p.jurisdiction_name, p.title, p.source_url, r.category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
+    const statusPool = policyStatus === 'all' ? allPolicies : allPolicies.filter((item) => item.status === policyStatus);
+    const geoPool = statusPool.map((item) => ({ ...item, geo: geoParts(item.jurisdiction_name, item.title, item.source_url) }));
+    const provincePool = province ? geoPool.filter((item) => item.geo.province === province) : geoPool;
+    const cityPool = city ? provincePool.filter((item) => item.geo.city === city) : provincePool;
     const facets = {
-      provinces: unique(allPolicies.map((item) => geoParts(item.jurisdiction_name, item.title, item.source_url).province)),
-      cities: unique(allPolicies.map((item) => geoParts(item.jurisdiction_name, item.title, item.source_url).city)),
-      districts: unique(allPolicies.map((item) => geoParts(item.jurisdiction_name, item.title, item.source_url).district)),
-      categories: unique(allPolicies.map((item) => item.category)),
+      provinces: unique(geoPool.map((item) => item.geo.province)),
+      cities: unique(provincePool.map((item) => item.geo.city)),
+      districts: unique(cityPool.map((item) => item.geo.district)),
+      categories: unique(cityPool.map((item) => item.category)),
     };
 
     return jsonResponse(res, 200, { sources: rows.map((row) => ({

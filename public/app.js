@@ -423,9 +423,13 @@ function renderSourceDashboard() {
     </section>
     <section class="card">
       <div class="card-title"><div><h2>已入库相关内容</h2><p>按省市区、品类和相关内容筛选后的政策列表。</p></div></div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴比例</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}</td><td><div class="title">${esc(item.title)}</div><div class="meta truncate">${esc(item.contentSnippet || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}${item.description ? `<div class="meta truncate">${esc(item.description)}</div>` : ''}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${item.rate != null ? `${esc(item.rate)}%` : '—'}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}${item.endNote ? `<div class="meta">${esc(item.endNote)}</div>` : ''}</td><td><div class="title truncate">${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a class="meta truncate" href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">${esc(item.sourceUrl)}</a>` : ''}</td></tr>`).join('') : '<tr><td colspan="11" class="empty">没有匹配内容。</td></tr>'}
-      </tbody></table></div>
+      <div class="policy-list">${list.length ? list.map((item) => `
+        <article class="policy-card">
+          <div class="policy-card-head"><div class="policy-id">#${esc(String(item.id || '').slice(0, 8))}</div><div><h3>${esc(item.title)}</h3><div class="policy-tags"><span class="tag">${esc(item.geo?.province || '全国')}</span>${item.geo?.city ? `<span class="tag">${esc(item.geo.city)}</span>` : ''}<span class="tag">${esc(item.category || '其他')}</span><span class="tag status">未过期</span></div></div></div>
+          <div class="policy-facts"><div><small>资金来源</small><strong>${esc(item.fundingSource || '未在原文中明确')}</strong></div><div><small>补贴比例</small><strong>${item.rate != null ? `${esc(item.rate)}%` : '—'}</strong></div><div><small>补贴上限</small><strong>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</strong></div><div><small>适用期限</small><strong>${esc(item.effectiveFrom || '—')} → ${esc(item.effectiveTo || '—')}${item.endNote ? `（${esc(item.endNote)}）` : ''}</strong></div></div>
+          <details class="policy-details"><summary>查看品类、条件和相关内容</summary><div class="policy-detail-body">${item.description ? `<p><b>适用品类/条件：</b>${esc(item.description)}</p>` : ''}${item.contentSnippet ? `<p><b>原文相关内容：</b>${esc(item.contentSnippet)}</p>` : ''}<p><b>发布机关：</b>${esc(item.issuer || '—')}</p></div></details>
+          <div class="policy-source"><div><b>官方文件：</b>${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">文号：${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">打开官方原文</a>` : ''}</div>
+        </article>`).join('') : '<div class="empty">没有匹配内容。</div>'}</div>
     </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }
 
@@ -861,6 +865,11 @@ app.addEventListener('submit', async (event) => {
 });
 
 app.addEventListener('change', async (event) => {
+  const dashboardForm = event.target.closest('#source-dashboard-filter-form');
+  if (dashboardForm && event.target.tagName === 'SELECT') {
+    dashboardForm.requestSubmit();
+    return;
+  }
   const roleTarget = event.target.closest('[data-action="change-role"]');
   if (roleTarget) {
     try { await api(`/api/users/${roleTarget.dataset.id}`, { method: 'PATCH', body: { role: roleTarget.value } }); toast('角色已更新', 'success'); await refresh(); render(); }
