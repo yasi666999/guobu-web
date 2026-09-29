@@ -115,6 +115,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 详细步骤见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)，多人协作规范见 [docs/COLLABORATION.md](docs/COLLABORATION.md)。
 
 免费上线方案见 [docs/FREE_DEPLOYMENT.md](docs/FREE_DEPLOYMENT.md)。
+使用自己电脑做服务器见 [docs/HOME_SERVER_DEPLOYMENT.md](docs/HOME_SERVER_DEPLOYMENT.md)。
 
 ## OCR 接入方式
 
