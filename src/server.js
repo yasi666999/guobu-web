@@ -560,8 +560,9 @@ function geoParts(name) {
   const provinceMatch = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/);
   const cityMatch = text.match(/([^/]+?市)/);
   const districtMatch = text.match(/([^/]+?(?:区|县|旗))/);
+  const provinceNames = ['内蒙古', '黑龙江', '新疆', '西藏', '广西', '宁夏', '北京', '天津', '河北', '山西', '辽宁', '吉林', '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', '湖北', '湖南', '广东', '海南', '重庆', '四川', '贵州', '云南', '陕西', '甘肃', '青海'];
   return {
-    province: provinceMatch?.[1] || (text.includes('全国') ? '全国' : ''),
+    province: provinceMatch?.[1] || provinceNames.find((province) => text.includes(province)) || (text.includes('全国') ? '全国' : ''),
     city: cityMatch?.[1] || '',
     district: districtMatch?.[1] || '',
   };
@@ -896,6 +897,7 @@ async function handleApi(db, req, res, url) {
     const district = String(url.searchParams.get('district') || '').trim();
     const category = String(url.searchParams.get('category') || '').trim();
     const q = String(url.searchParams.get('q') || '').trim();
+    const policyStatus = String(url.searchParams.get('status') || 'active').trim();
     const sourceFilters = [];
     const sourceValues = [];
     for (const [field, value] of [['province', province], ['city', city], ['district', district]]) {
@@ -937,6 +939,10 @@ async function handleApi(db, req, res, url) {
       policyFilters.push('r.category LIKE ?');
       policyValues.push(`%${category}%`);
     }
+    if (policyStatus && policyStatus !== 'all') {
+      policyFilters.push('p.status = ?');
+      policyValues.push(policyStatus);
+    }
     if (q) {
       policyFilters.push(`(p.title LIKE ? OR p.issuer LIKE ? OR p.program LIKE ? OR p.source_url LIKE ? OR EXISTS (
         SELECT 1 FROM evidence e WHERE e.policy_id = p.id AND e.quote LIKE ?
@@ -958,7 +964,6 @@ async function handleApi(db, req, res, url) {
       issuer: row.issuer,
       fundingSource: row.funding_source,
       jurisdictionName: row.jurisdiction_name,
-      geo: geoParts(row.jurisdiction_name),
       geo: geoParts(row.jurisdiction_name),
       status: row.status,
       effectiveFrom: row.effective_from,
@@ -985,7 +990,7 @@ async function handleApi(db, req, res, url) {
       documentCount: row.document_count,
       importedCount: row.imported_count,
       lastDocumentAt: row.last_document_at,
-    })), policies, facets, filters: { province, city, district, category, q } });
+    })), policies, facets, filters: { province, city, district, category, q, status: policyStatus } });
   }
 
   if (pathname === '/api/import' && req.method === 'POST') {

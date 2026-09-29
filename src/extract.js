@@ -76,9 +76,13 @@ const RELEVANCE_KEYWORDS = [
   { word: '置换更新', weight: 4 },
 ];
 
+const STRONG_KEYWORDS = ['国补', '消费品以旧换新', '以旧换新', '大规模设备更新'];
+const CATEGORY_KEYWORDS = ['汽车', '家电', '数码', '手机', '平板', '智能手表', '农机', '电动自行车', '家装', '厨卫'];
+
 export function analyzeGuobuRelevance(parsed) {
   const text = String(parsed?.text || '');
   const title = String(fieldValue(parsed, 'title') || '');
+  const head = text.slice(0, 8000);
   let score = 0;
   const hits = [];
   for (const item of RELEVANCE_KEYWORDS) {
@@ -89,12 +93,17 @@ export function analyzeGuobuRelevance(parsed) {
     score += weight;
     hits.push({ word: item.word, weight, inTitle });
   }
+  const strongInTitle = STRONG_KEYWORDS.some((word) => title.includes(word)) || (CATEGORY_KEYWORDS.some((word) => title.includes(word)) && title.includes('补贴'));
+  const strongInHead = STRONG_KEYWORDS.some((word) => head.includes(word)) || (CATEGORY_KEYWORDS.some((word) => head.includes(word)) && head.includes('补贴'));
   const level = score >= 40 ? 'high' : score >= 20 ? 'medium' : score >= 8 ? 'low' : 'none';
+  const isRelated = strongInTitle || (strongInHead && score >= 30);
   return {
     score,
     level,
     hits,
-    isRelated: score >= 8,
+    strongInTitle,
+    strongInHead,
+    isRelated,
     summary: hits.length ? `命中关键词：${hits.map((item) => item.word).join('、')}` : '未发现国补相关关键词',
   };
 }

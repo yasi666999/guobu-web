@@ -17,7 +17,7 @@ const state = {
   sourceDashboard: [],
   policies: [],
   facets: { provinces: [], cities: [], districts: [], categories: [] },
-  filters: { province: '', city: '', district: '', category: '', q: '' },
+  filters: { province: '', city: '', district: '', category: '', q: '', status: 'active' },
   editingSourceId: null,
   preview: null,
   policyQuery: '',
@@ -291,7 +291,8 @@ function previewField(document, name) {
 
 function splitGeoName(name) {
   const text = String(name || '').replace(/\s+/g, '').replace(/／/g, '/');
-  const province = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/)?.[1] || (text.includes('全国') ? '全国' : '');
+  const provinceNames = ['内蒙古', '黑龙江', '新疆', '西藏', '广西', '宁夏', '北京', '天津', '河北', '山西', '辽宁', '吉林', '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', '湖北', '湖南', '广东', '海南', '重庆', '四川', '贵州', '云南', '陕西', '甘肃', '青海'];
+  const province = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/)?.[1] || provinceNames.find((name) => text.includes(name)) || (text.includes('全国') ? '全国' : '');
   const city = text.match(/([^/]+?市)/)?.[1] || '';
   const district = text.match(/([^/]+?(?:区|县|旗))/)?.[1] || '';
   return { province, city, district };
@@ -386,7 +387,7 @@ function renderCollectV2() {
 }
 
 function renderSourceDashboard() {
-  const filters = state.filters || { province: '', city: '', district: '', category: '', q: '' };
+  const filters = state.filters || { province: '', city: '', district: '', category: '', q: '', status: 'active' };
   const list = state.policies || [];
   const option = (values, selected) => `<option value="">全部</option>${values.map((value) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(value)}</option>`).join('')}`;
   return shell(`
@@ -406,6 +407,7 @@ function renderSourceDashboard() {
         <div class="field"><label>市</label><select name="city">${option(state.facets.cities || [], filters.city)}</select></div>
         <div class="field"><label>区县</label><select name="district">${option(state.facets.districts || [], filters.district)}</select></div>
         <div class="field"><label>品类</label><select name="category">${option(state.facets.categories || [], filters.category)}</select></div>
+        <div class="field"><label>政策状态</label><select name="status"><option value="active" ${filters.status === 'active' ? 'selected' : ''}>只看未过期</option><option value="expired" ${filters.status === 'expired' ? 'selected' : ''}>已过期</option><option value="all" ${filters.status === 'all' ? 'selected' : ''}>全部</option></select></div>
         <div class="field full"><label>相关内容关键词</label><input name="q" value="${esc(filters.q || '')}" placeholder="例如：以旧换新、汽车、补贴、家电"></div>
         <div class="full actions"><button class="btn primary" type="submit">筛选看板</button><button class="btn" type="button" data-action="clear-dashboard-filter">清空筛选</button></div>
       </form>
@@ -638,7 +640,7 @@ async function handleAction(action, target) {
     return;
   }
   if (action === 'clear-dashboard-filter') {
-    state.filters = { province: '', city: '', district: '', category: '', q: '' };
+    state.filters = { province: '', city: '', district: '', category: '', q: '', status: 'active' };
     state.policyQuery = '';
     const data = await api('/api/source-dashboard');
     state.sourceDashboard = data.sources || [];
@@ -840,7 +842,7 @@ app.addEventListener('submit', async (event) => {
     }
     if (form.id === 'source-dashboard-filter-form') {
       const formData = new FormData(form);
-      const filters = Object.fromEntries(['province', 'city', 'district', 'category', 'q'].map((key) => [key, String(formData.get(key) || '')]));
+      const filters = Object.fromEntries(['province', 'city', 'district', 'category', 'q', 'status'].map((key) => [key, String(formData.get(key) || '')]));
       state.filters = filters;
       state.policyQuery = filters.q;
       const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
