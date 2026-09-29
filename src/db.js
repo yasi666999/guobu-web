@@ -55,7 +55,10 @@ function migrateDatabase(db) {
   ensureColumn(db, 'policies', 'doc_no', 'TEXT');
   ensureColumn(db, 'policies', 'description', 'TEXT');
   ensureColumn(db, 'policies', 'end_note', 'TEXT');
+  ensureColumn(db, 'policies', 'jurisdiction_city', 'TEXT');
+  ensureColumn(db, 'policies', 'jurisdiction_district', 'TEXT');
   ensureColumn(db, 'subsidy_rules', 'cap_unit', 'TEXT');
+  ensureColumn(db, 'subsidy_rules', 'rule_text', 'TEXT');
 }
 
 export function parseJson(value, fallback = null) {

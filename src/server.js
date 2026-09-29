@@ -400,6 +400,7 @@ export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) 
   const description = overrides.description || summary.description || '';
   const endNote = overrides.endNote || summary.endNote || '';
   const capUnit = overrides.capUnit || summary.capUnit || '元';
+  const ruleText = overrides.ruleText || summary.ruleText || '';
   const amountType = overrides.amountType || summary.amountType || 'unknown';
   const rate = overrides.rate ?? summary.rate ?? null;
   const amountValue = overrides.amountValue ?? summary.amountValue ?? null;
@@ -413,7 +414,10 @@ export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) 
     return { duplicate: true, contributionId: existing.id, policyId: db.prepare('SELECT id FROM policies WHERE contribution_id = ?').get(existing.id)?.id || null };
   }
 
-  const policyLevel = overrides.policyLevel || (jurisdictionName === '全国' ? 'national' : 'other');
+ const policyLevel = overrides.policyLevel || (jurisdictionName === '全国' ? 'national' : 'other');
+  const inferredGeo = geoParts(jurisdictionName, title, sourceUrl || '');
+  const jurisdictionCity = overrides.jurisdictionCity || summary.jurisdictionCity || inferredGeo.city || '';
+  const jurisdictionDistrict = overrides.jurisdictionDistrict || summary.jurisdictionDistrict || inferredGeo.district || '';
   const timestamp = nowIso();
   const contributionId = newId();
   const policyId = newId();
@@ -443,19 +447,20 @@ export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) 
     db.prepare(`
       INSERT INTO policies (
         id, contribution_id, title, official_file_name, doc_no, program, policy_level, issuer, funding_source,
-        description, end_note, jurisdiction_code, jurisdiction_name,
+        description, end_note, jurisdiction_code, jurisdiction_name, jurisdiction_city, jurisdiction_district,
         status, effective_from, effective_to, source_url, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       policyId, contributionId, title, officialFileName, docNo, overrides.program || summary.program || '消费品以旧换新', policyLevel,
-      issuer, fundingSource, description, endNote, jurisdictionName, status, effectiveFrom, effectiveTo, sourceUrl, timestamp, timestamp,
+      issuer, fundingSource, description, endNote, jurisdictionName, jurisdictionCity, jurisdictionDistrict,
+      status, effectiveFrom, effectiveTo, sourceUrl, timestamp, timestamp,
     );
     db.prepare(`
-      INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, cap_unit, conditions_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, cap_unit, rule_text, conditions_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       newId(), policyId, overrides.category || summary.category || '其他', amountType, rate,
-      amountValue, capAmount, capUnit, JSON.stringify({ relevance, notes: '采集页自动导入' }), timestamp,
+      amountValue, capAmount, capUnit, ruleText, JSON.stringify({ relevance, notes: '采集页自动导入' }), timestamp,
     );
     const evidenceRows = (parsed.evidence || []).length
       ? parsed.evidence
@@ -567,6 +572,8 @@ function geoParts(name, title = '', sourceUrl = '') {
   const provinceMatch = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/);
   const cityMatch = text.match(/([^/]+?市)/);
   const districtMatch = text.match(/([^/]+?(?:区|县|旗))/);
+  const cleanCity = (value) => value && !/(省|自治区|财政|政府|委员会|商务局|发展和改革)/.test(value) ? value : '';
+  const cleanDistrict = (value) => value && !/(省|自治区|财政|政府|委员会|商务局|发展和改革|专区|换新|关于|取消|恢复|实施|通知|公告|年|月|日)/.test(value) ? value : '';
   const titleCity = [...extra.matchAll(/([\u4e00-\u9fff]{2,4}市)/g)]
     .map((match) => match[1])
     .find((value) => !/(省|自治区|财政|政府|委员会|商务局|发展和改革)/.test(value));
@@ -576,13 +583,22 @@ function geoParts(name, title = '', sourceUrl = '') {
   const provinceNames = ['内蒙古', '黑龙江', '新疆', '西藏', '广西', '宁夏', '北京', '天津', '河北', '山西', '辽宁', '吉林', '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', '湖北', '湖南', '广东', '海南', '重庆', '四川', '贵州', '云南', '陕西', '甘肃', '青海'];
   return {
     province: provinceMatch?.[1] || provinceNames.find((province) => text.includes(province) || extra.includes(province)) || (text.includes('全国') ? '全国' : ''),
-    city: cityMatch?.[1] || titleCity || '',
-    district: districtMatch?.[1] || titleDistrict || '',
+    city: cleanCity(cityMatch?.[1]) || cleanCity(titleCity),
+    district: cleanDistrict(districtMatch?.[1]) || cleanDistrict(titleDistrict),
   };
 }
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
+function policyGeo(row) {
+  const derived = geoParts(row.jurisdiction_name, row.title, row.source_url);
+  return {
+    province: derived.province || row.jurisdiction_name || '',
+    city: row.jurisdiction_city || derived.city || '',
+    district: row.jurisdiction_district || derived.district || '',
+  };
 }
 
 async function handleApi(db, req, res, url) {
@@ -981,7 +997,9 @@ async function handleApi(db, req, res, url) {
       description: row.description,
       endNote: row.end_note,
       jurisdictionName: row.jurisdiction_name,
-      geo: geoParts(row.jurisdiction_name, row.title, row.source_url),
+      geo: policyGeo(row),
+      jurisdictionCity: row.jurisdiction_city,
+      jurisdictionDistrict: row.jurisdiction_district,
       status: row.status,
       effectiveFrom: row.effective_from,
       effectiveTo: row.effective_to,
@@ -992,12 +1010,13 @@ async function handleApi(db, req, res, url) {
       fixedAmount: row.fixed_amount,
       capAmount: row.cap_amount,
       capUnit: row.cap_unit,
+      ruleText: row.rule_text,
       contentSnippet: row.content_snippet,
     }));
 
-    const allPolicies = db.prepare('SELECT p.status, p.jurisdiction_name, p.title, p.source_url, r.category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
+    const allPolicies = db.prepare('SELECT p.status, p.jurisdiction_name, p.jurisdiction_city, p.jurisdiction_district, p.title, p.source_url, r.category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
     const statusPool = policyStatus === 'all' ? allPolicies : allPolicies.filter((item) => item.status === policyStatus);
-    const geoPool = statusPool.map((item) => ({ ...item, geo: geoParts(item.jurisdiction_name, item.title, item.source_url) }));
+    const geoPool = statusPool.map((item) => ({ ...item, geo: policyGeo(item) }));
     const provincePool = province ? geoPool.filter((item) => item.geo.province === province) : geoPool;
     const cityPool = city ? provincePool.filter((item) => item.geo.city === city) : provincePool;
     const facets = {
@@ -1071,9 +1090,11 @@ async function handleApi(db, req, res, url) {
       fundingSource: row.funding_source,
       officialFileName: row.official_file_name, docNo: row.doc_no, description: row.description, endNote: row.end_note,
       jurisdictionName: row.jurisdiction_name, status: row.status, effectiveFrom: row.effective_from,
-      geo: geoParts(row.jurisdiction_name, row.title, row.source_url),
+      jurisdictionCity: row.jurisdiction_city, jurisdictionDistrict: row.jurisdiction_district,
+      geo: policyGeo(row),
       effectiveTo: row.effective_to, sourceUrl: row.source_url, category: row.category,
       amountType: row.amount_type, rate: row.rate, fixedAmount: row.fixed_amount, capAmount: row.cap_amount, capUnit: row.cap_unit,
+      ruleText: row.rule_text,
     })) });
   }
 

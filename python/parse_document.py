@@ -350,8 +350,22 @@ def extract_jurisdiction(text: str, title: str = "") -> tuple[str | None, str | 
     return None, None
 
 
+def extract_city_district(text: str, title: str = "") -> tuple[str | None, str | None, str | None, str | None]:
+    source = f"{title}\n{text[:8000]}"
+    city_pattern = re.compile(r"([\u4e00-\u9fff]{2,6}市)")
+    district_pattern = re.compile(r"([\u4e00-\u9fff]{2,8}(?:区|县|旗))")
+    excluded = ("自治区", "财政", "政府", "委员会", "商务局", "发展和改革", "通知", "公告", "专区", "换新")
+    city = next((match.group(1) for match in city_pattern.finditer(source) if not any(word in match.group(1) for word in excluded)), None)
+    district = next((match.group(1) for match in district_pattern.finditer(source) if not any(word in match.group(1) for word in excluded)), None)
+    return None, city, district, (city or district)
+
+
 def extract_amount(text: str) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
+    full_reduction = re.findall(r"满\s*\d+(?:\.\d+)?\s*减\s*\d+(?:\.\d+)?", text)
+    if full_reduction:
+        result["rule_text"] = field("、".join(dict.fromkeys(full_reduction)), 0.88, "；".join(full_reduction[:3]))
+        result["amount_type"] = field("tiered", 0.82, "；".join(full_reduction[:3]))
     percent = re.search(r"(?:补贴|补助|按|比例(?:为|不超过)?|给予)[^\d%]{0,18}(\d+(?:\.\d+)?)\s*%", text)
     if not percent:
         percent = re.search(r"(\d+(?:\.\d+)?)\s*%[^。；\n]{0,35}(?:补贴|补助|优惠)", text)
@@ -448,6 +462,11 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
     jurisdiction, jurisdiction_quote = extract_jurisdiction(text, title or "")
     if jurisdiction:
         fields["jurisdiction_name"] = field(jurisdiction, 0.68, jurisdiction_quote or "")
+    _, city, district, geo_quote = extract_city_district(text, title or "")
+    if city:
+        fields["jurisdiction_city"] = field(city, 0.62, geo_quote or "")
+    if district:
+        fields["jurisdiction_district"] = field(district, 0.62, geo_quote or "")
 
     category, categories, category_evidence = extract_categories(text)
     if category:

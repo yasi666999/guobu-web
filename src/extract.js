@@ -223,6 +223,8 @@ export function extractedFieldSummary(parsed) {
     issuer: fieldValue(parsed, 'issuer') || '',
     fundingSource: fieldValue(parsed, 'funding_source') || '',
     jurisdictionName: fieldValue(parsed, 'jurisdiction_name') || '',
+    jurisdictionCity: fieldValue(parsed, 'jurisdiction_city') || '',
+    jurisdictionDistrict: fieldValue(parsed, 'jurisdiction_district') || '',
     category: fieldValue(parsed, 'category') || '',
     program: fieldValue(parsed, 'program') || '',
     amountType: fieldValue(parsed, 'amount_type') || 'unknown',
@@ -230,6 +232,7 @@ export function extractedFieldSummary(parsed) {
     rate: fieldValue(parsed, 'rate') ?? null,
     capAmount: fieldValue(parsed, 'cap_amount') ?? null,
     capUnit: fieldValue(parsed, 'cap_unit') || '元',
+    ruleText: fieldValue(parsed, 'rule_text') || '',
     description: Array.isArray(fieldValue(parsed, 'conditions'))
       ? fieldValue(parsed, 'conditions').join('；')
       : String(fieldValue(parsed, 'conditions') || ''),

@@ -152,6 +152,8 @@ CREATE TABLE IF NOT EXISTS policies (
   end_note TEXT,
   jurisdiction_code TEXT,
   jurisdiction_name TEXT,
+  jurisdiction_city TEXT,
+  jurisdiction_district TEXT,
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'expired', 'superseded', 'unknown')),
   effective_from TEXT,
@@ -170,6 +172,7 @@ CREATE TABLE IF NOT EXISTS subsidy_rules (
   fixed_amount REAL,
   cap_amount REAL,
   cap_unit TEXT,
+  rule_text TEXT,
   conditions_json TEXT,
   created_at TEXT NOT NULL
 );
