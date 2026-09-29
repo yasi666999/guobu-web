@@ -28,6 +28,25 @@ if ($Nginx) {
   }
 }
 
+$Cloudflared = Join-Path $Root "deploy\windows\bin\cloudflared.exe"
+if (Test-Path $Cloudflared) {
+  $CloudflaredRunning = Get-Process cloudflared -ErrorAction SilentlyContinue
+  if (-not $CloudflaredRunning) {
+    $CloudflareOut = Join-Path $LogDir "cloudflared.out.log"
+    $CloudflareErr = Join-Path $LogDir "cloudflared.err.log"
+    Start-Process -FilePath $Cloudflared -ArgumentList @("tunnel", "--url", "http://127.0.0.1:8080", "--protocol", "http2", "--no-autoupdate") -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $CloudflareOut -RedirectStandardError $CloudflareErr
+    for ($i = 0; $i -lt 20; $i++) {
+      Start-Sleep -Seconds 1
+      $CloudflareText = Get-Content $CloudflareOut -Raw -ErrorAction SilentlyContinue
+      $CloudflareMatch = [regex]::Match([string]$CloudflareText, "https://[a-z0-9-]+\.trycloudflare\.com")
+      if ($CloudflareMatch.Success) {
+        Set-Content -LiteralPath (Join-Path $Root "data\public-url.txt") -Value $CloudflareMatch.Value -Encoding utf8
+        break
+      }
+    }
+  }
+}
+
 "[$(Get-Date -Format s)] Starting Guobu Hub" | Add-Content -LiteralPath $LogFile -Encoding utf8
 
 while ($true) {

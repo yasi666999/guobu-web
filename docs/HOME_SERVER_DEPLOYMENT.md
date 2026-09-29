@@ -15,6 +15,8 @@
 
 注意：Tailscale Funnel 当前仍是 beta，适合低流量网站。它只能公开 443、8443 和 10000 端口，但可以把公网 HTTPS 转发到本机 Nginx 的 8080 端口。
 
+如果 Tailscale Funnel 所在网络地区无法访问，可以直接使用下面推荐的 Cloudflare HTTP/2 快速隧道。它不需要公网 IP，也不需要域名，适合先让别人访问。
+
 ### 1. 启动应用
 
 在项目目录运行：
@@ -100,10 +102,16 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install-backup-task.ps1
 powershell -ExecutionPolicy Bypass -File deploy\windows\setup-cloudflare-quick-tunnel.ps1
 ```
 
-控制台会输出：
+脚本会在后台启动 HTTP/2 隧道，并把公开地址写入：
 
 ```text
-https://随机名称.trycloudflare.com
+data\public-url.txt
+```
+
+访问地址格式：
+
+```text
+https://随机名称.trycloudflare.com/guobu/
 ```
 
 缺点：
