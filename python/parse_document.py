@@ -66,6 +66,16 @@ def compact(value: str, limit: int = 120) -> str:
     return value[:limit]
 
 
+def clean_title(value: str) -> str:
+    """Remove common government-site title suffixes while preserving the policy name."""
+    title = clean_text(value)
+    if not title:
+        return ""
+    title = re.split(r"\s*[_|｜]\s*(?:其他政策文件|政策文件|通知公告|政务公开|政府信息公开|首页)", title, maxsplit=1)[0]
+    title = re.sub(r"\s*-\s*(?:中国政府网|.*?人民政府|.*?商务厅|.*?财政厅|.*?商务局|.*?财政局)$", "", title)
+    return clean_text(title)
+
+
 def field(value: Any, confidence: float, quote: str = "", page: int | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"value": value, "confidence": round(confidence, 3)}
     if quote:
@@ -86,6 +96,8 @@ def read_html(path: Path) -> tuple[str, dict[str, Any], list[str], list[dict[str
     raw = path.read_bytes()
     document = html.fromstring(decode_bytes(raw))
     title = clean_text(document.xpath("string(//title)") or "")
+    heading = clean_text(document.xpath("string(//h1)") or "")
+    og_title = clean_text(document.xpath("string(//meta[@property='og:title']/@content)") or "")
     text = clean_text(document.text_content())
     links: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -108,7 +120,7 @@ def read_html(path: Path) -> tuple[str, dict[str, Any], list[str], list[dict[str
         if found:
             published = clean_text(str(found[0]))
             break
-    return text, {"title": title, "published_at": published}, [], links[:300]
+    return text, {"title": title, "heading": heading, "og_title": og_title, "published_at": published}, [], links[:300]
 
 
 def read_docx(path: Path) -> tuple[str, dict[str, Any], list[str], list[dict[str, str]]]:
@@ -364,17 +376,22 @@ def extract_amount(text: str) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     full_reduction = re.findall(r"满\s*\d+(?:\.\d+)?\s*减\s*\d+(?:\.\d+)?", text)
     if full_reduction:
-        result["rule_text"] = field("、".join(dict.fromkeys(full_reduction)), 0.88, "；".join(full_reduction[:3]))
-        result["amount_type"] = field("tiered", 0.82, "；".join(full_reduction[:3]))
+        unique_reductions = list(dict.fromkeys(full_reduction))
+        result["rule_text"] = field("、".join(unique_reductions), 0.88, "；".join(unique_reductions[:3]))
+        result["amount_type"] = field("tiered", 0.82, "；".join(unique_reductions[:3]))
+        discounts = [float(match) for match in re.findall(r"减\s*(\d+(?:\.\d+)?)", "、".join(unique_reductions))]
+        if discounts:
+            result["discount_amount"] = field(max(discounts), 0.86, "；".join(unique_reductions[:3]))
+            result["cap_amount"] = field(max(discounts), 0.68, "满减券按单笔优惠上限理解")
     percent = re.search(r"(?:补贴|补助|按|比例(?:为|不超过)?|给予)[^\d%]{0,18}(\d+(?:\.\d+)?)\s*%", text)
     if not percent:
         percent = re.search(r"(\d+(?:\.\d+)?)\s*%[^。；\n]{0,35}(?:补贴|补助|优惠)", text)
-    if percent:
+    if percent and not any(word in percent.group(0) for word in ("增值税", "税率", "折旧率", "利率")):
         result["rate"] = field(float(percent.group(1)), 0.88, percent.group(0))
         result["amount_type"] = field("percent", 0.86, percent.group(0))
 
     cap = re.search(r"(?:最高|上限|最高不超过|不超过)[^\d]{0,12}(\d+(?:\.\d+)?)\s*元", text)
-    if cap:
+    if cap and not any(word in cap.group(0) for word in ("工资", "薪酬", "罚款", "价格", "销售额")):
         result["cap_amount"] = field(float(cap.group(1)), 0.9, cap.group(0))
 
     fixed = re.search(r"(?:补贴|补助|每件|每台|每人|每户|每辆|每部)[^\d\n]{0,16}(\d+(?:\.\d+)?)\s*元", text)
@@ -417,9 +434,11 @@ def extract_end_note(text: str) -> tuple[str | None, str | None]:
 
 
 def infer_title(text: str, metadata: dict[str, Any], lines: list[str]) -> tuple[str | None, str | None]:
-    title = clean_text(str(metadata.get("title", "")))
-    if title:
-        return title, title
+    candidates = [metadata.get("heading", ""), metadata.get("og_title", ""), metadata.get("title", "")]
+    for candidate in candidates:
+        title = clean_title(str(candidate or ""))
+        if title and len(title) >= 6:
+            return title, clean_text(str(candidate or ""))
     for line in lines[:30]:
         value = clean_text(line)
         if 6 <= len(value) <= 100 and any(keyword in value for keyword in ("通知", "方案", "公告", "细则", "办法", "政策", "措施")):
@@ -431,6 +450,50 @@ def infer_title(text: str, metadata: dict[str, Any], lines: list[str]) -> tuple[
     return None, None
 
 
+def classify_document(title: str, text: str) -> str:
+    value = f"{title}\n{text[:3000]}"
+    if any(keyword in title for keyword in ("新闻", "发布会", "吹风会", "活动举行", "视频解读", "图解", "一图读懂")):
+        return "news"
+    if any(keyword in title for keyword in ("政策解读", "解读", "问答", "答记者问")):
+        return "interpretation"
+    if any(keyword in title for keyword in ("实施细则", "实施方案", "工作方案", "管理办法")):
+        return "implementation"
+    if any(keyword in title for keyword in ("通知", "公告", "政策", "办法", "补贴标准")):
+        return "policy"
+    if re.search(r"(栏目|专题|首页|政策文件|通知公告)\s*$", title) or ("政策" in title and len(text) < 500):
+        return "listing"
+    return "unknown"
+
+
+def extract_structured_rule(text: str, amount: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    rule_text = amount.get("rule_text", {}).get("value") if isinstance(amount.get("rule_text"), dict) else None
+    if rule_text:
+        result["rule_type"] = field("full_reduction", 0.9, rule_text)
+        threshold = re.search(r"满\s*(\d+(?:\.\d+)?)", rule_text)
+        discount = re.search(r"减\s*(\d+(?:\.\d+)?)", rule_text)
+        if threshold:
+            result["threshold_amount"] = field(float(threshold.group(1)), 0.9, rule_text)
+        if discount:
+            result["discount_amount"] = field(float(discount.group(1)), 0.9, rule_text)
+    elif amount.get("rate"):
+        result["rule_type"] = field("percentage", 0.9, amount["rate"].get("quote", ""))
+    elif amount.get("amount_value"):
+        result["rule_type"] = field("fixed", 0.82, amount["amount_value"].get("quote", ""))
+    else:
+        result["rule_type"] = field("unknown", 0.3)
+    limit = re.search(r"每人每类(?:产品)?可补贴(\d+)件|每人可补贴(\d+)次|每个消费者每类可补贴(\d+)件", text)
+    if limit:
+        value = next((group for group in limit.groups() if group), None)
+        if value:
+            result["per_user_limit"] = field(int(value), 0.82, limit.group(0))
+    if any(keyword in text for keyword in ("不可叠加", "不得叠加", "不再叠加")):
+        result["stackable"] = field(False, 0.82, "不可叠加")
+    elif any(keyword in text for keyword in ("可叠加", "叠加使用", "可同时享受")):
+        result["stackable"] = field(True, 0.75, "可叠加")
+    return result
+
+
 def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     fields: dict[str, Any] = {}
     lines = [line for line in text.splitlines() if line.strip()]
@@ -438,6 +501,8 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
     title, title_quote = infer_title(text, metadata, lines)
     if title:
         fields["title"] = field(title, 0.82, title_quote)
+        fields["official_file_name"] = field(title, 0.8, title_quote)
+    fields["document_type"] = field(classify_document(title or "", text), 0.82, title_quote or "")
 
     doc_no = re.search(r"([\u4e00-\u9fffA-Za-z]{0,10}[〔\[]\d{4}[〕\]]\s*第?\s*\d+\s*号)", text)
     if doc_no:
@@ -477,7 +542,9 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
     if program:
         fields["program"] = field(program, 0.88, program_quote or "")
 
-    fields.update(extract_amount(text))
+    amount_fields = extract_amount(text)
+    fields.update(amount_fields)
+    fields.update(extract_structured_rule(text, amount_fields))
     cap_unit, cap_unit_quote = extract_cap_unit(text)
     fields["cap_unit"] = field(cap_unit, 0.65, cap_unit_quote or "")
     end_note, end_note_quote = extract_end_note(text)
@@ -492,6 +559,7 @@ def extract_fields(text: str, metadata: dict[str, Any]) -> tuple[dict[str, Any],
             conditions.append(value)
     if conditions:
         fields["conditions"] = field(conditions[:8], 0.62, conditions[0])
+        fields["conditions_text"] = field("；".join(conditions[:8]), 0.62, conditions[0])
 
     evidence: list[dict[str, Any]] = []
     for name, item in fields.items():

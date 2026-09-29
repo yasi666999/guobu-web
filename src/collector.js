@@ -34,6 +34,11 @@ export async function assertPublicUrl(rawUrl) {
   const url = new URL(rawUrl);
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('只允许 http 或 https 地址');
   if (url.username || url.password) throw new Error('URL 不能包含用户名或密码');
+  const allowNonGov = ['1', 'true', 'yes'].includes(String(process.env.ALLOW_NON_GOV_SOURCES || '').toLowerCase());
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (!allowNonGov && hostname !== 'gov.cn' && !hostname.endsWith('.gov.cn')) {
+    throw new Error('仅允许采集政府官方 .gov.cn 页面；如确需临时例外，请显式设置 ALLOW_NON_GOV_SOURCES=1');
+  }
   if (url.hostname === 'localhost') throw new Error('不允许访问本机地址');
   const addresses = await lookup(url.hostname, { all: true });
   if (!addresses.length) throw new Error('域名无法解析');

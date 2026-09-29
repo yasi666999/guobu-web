@@ -17,7 +17,7 @@ const state = {
   sourceDashboard: [],
   policies: [],
   facets: { provinces: [], cities: [], districts: [], categories: [] },
-  filters: { province: '', city: '', district: '', category: '', q: '', status: 'active' },
+  filters: { province: '', city: '', district: '', category: '', q: '', status: 'active', verification: '' },
   editingSourceId: null,
   preview: null,
   policyQuery: '',
@@ -342,28 +342,68 @@ function renderInterpretationPreview(document) {
   const warnings = document.extracted?.warnings || [];
   const geo = splitGeoName(`${fields.jurisdiction_name?.value || ''} ${fields.title?.value || ''}`);
   const levelLabel = { high: '高度相关', medium: '可能相关', low: '弱相关', none: '未匹配' }[relevance.level] || '未匹配';
+  const fieldValue = (name, fallback = '') => {
+    const value = fields[name]?.value;
+    return value == null || value === '' ? fallback : value;
+  };
+  const selected = (value, target) => String(value ?? '') === String(target ?? '') ? 'selected' : '';
+  const documentType = fieldValue('document_type', 'unknown');
+  const amountType = fieldValue('amount_type', 'unknown');
+  const ruleType = fieldValue('rule_type', 'unknown');
+  const province = geo.province || fieldValue('jurisdiction_name');
+  const officeName = fieldValue('official_file_name') || fieldValue('title') || document.title || '—';
+  const sourceUrl = document.url || document.canonicalUrl || '';
+  const needsForce = !relevance.isRelated || !['policy', 'implementation', 'notice'].includes(documentType) || relevance.importable === false;
   return `
     <section class="card">
-      <div class="card-title"><div><h2>网站解读展览</h2><p>确认以下字段后导入数据库。</p></div><div class="list-actions"><span class="badge ${relevance.isRelated ? 'approved' : 'rejected'}">${esc(levelLabel)} · ${esc(relevance.score || 0)} 分</span></div></div>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴比例</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody><tr>
+      <div class="card-title"><div><h2>网站解读展览</h2><p>先核对下方识别结果，再按项目字段人工修正并导入数据库。</p></div><div class="list-actions"><span class="badge ${relevance.isRelated ? 'approved' : 'rejected'}">${esc(levelLabel)} · ${esc(relevance.score || 0)} 分</span><span class="badge processed">置信度 ${esc(relevance.confidence ?? '—')}</span></div></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴区县</th><th>补贴比例 / 满减规则</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody><tr>
         <td class="mono">${esc(String(document.id || '').slice(0, 8))}</td>
-        <td><div class="title">${esc(fields.title?.value || document.title || '—')}</div></td>
-        <td>${esc(fields.funding_source?.value || '未在原文中明确')}</td>
-        <td>${esc(fields.category?.value || '—')}</td>
-        <td>${esc(geo.province || '—')}</td>
-        <td>${esc(geo.city || '—')}</td>
-        <td>${fields.rate?.value != null ? `${esc(fields.rate.value)}%` : '—'}</td>
-        <td>${fields.cap_amount?.value != null ? `${esc(fields.cap_amount.value)} ${esc(fields.cap_unit?.value || '元')}` : '—'}</td>
-        <td>${esc(fields.effective_from?.value || '—')}</td>
-        <td>${esc(fields.effective_to?.value || '—')}${fields.end_note?.value ? `<div class="meta">${esc(fields.end_note.value)}</div>` : ''}</td>
-        <td><div class="title truncate">${esc(fields.title?.value || document.title || '—')}</div>${fields.doc_no?.value ? `<div class="meta">${esc(fields.doc_no.value)}</div>` : ''}${document.url ? `<a class="meta truncate" href="${esc(document.url)}" target="_blank" rel="noreferrer">${esc(document.url)}</a>` : ''}</td>
+        <td><div class="title">${esc(fieldValue('title') || document.title || '—')}</div></td>
+        <td>${esc(fieldValue('funding_source', '未在原文中明确'))}</td>
+        <td>${esc(fieldValue('category', '—'))}</td>
+        <td>${esc(province || '—')}</td>
+        <td>${esc(fieldValue('jurisdiction_city') || geo.city || '—')}</td>
+        <td>${esc(fieldValue('jurisdiction_district') || geo.district || '—')}</td>
+        <td>${esc(fieldValue('rule_text') || (fieldValue('rate') !== '' ? `${fieldValue('rate')}%` : '—'))}</td>
+        <td>${fieldValue('cap_amount') !== '' ? `${esc(fieldValue('cap_amount'))} ${esc(fieldValue('cap_unit', '元'))}` : '—'}</td>
+        <td>${esc(fieldValue('effective_from', '—'))}</td>
+        <td>${esc(fieldValue('effective_to', '—'))}${fieldValue('end_note') ? `<div class="meta">${esc(fieldValue('end_note'))}</div>` : ''}</td>
+        <td><div class="title">${esc(officeName)}</div>${sourceUrl ? `<a class="meta truncate" href="${esc(sourceUrl)}" target="_blank" rel="noreferrer">${esc(sourceUrl)}</a>` : '<span class="muted">未附官方链接</span>'}</td>
       </tr></tbody></table></div>
       ${relevance.summary ? `<div class="notice ${relevance.isRelated ? 'success' : 'warn'}" style="margin-top:12px">${esc(relevance.summary)}</div>` : ''}
       ${warnings.length ? `<div class="notice warn" style="margin-top:10px">${warnings.map(esc).join('；')}</div>` : ''}
-      <div class="grid two" style="margin-top:16px">
-        <div><h3>原文证据</h3>${evidence.length ? evidence.slice(0, 8).map((item) => `<div class="evidence">${esc(item.quote || '')}<small>${esc(item.field_name)} · 第 ${esc(item.page_number || '?')} 页</small></div>`).join('') : '<div class="notice">未抽取到字段级引文。</div>'}</div>
-        <div><h3>操作</h3><div class="actions"><button class="btn primary" data-action="import-preview" data-id="${esc(document.id)}" ${relevance.isRelated ? '' : 'disabled'}>导入数据库</button><button class="btn" data-action="parse-document" data-id="${esc(document.id)}">重新解析</button><button class="btn ghost" data-action="discard-preview">取消展览</button></div><p class="muted small">解析字符数：${esc(document.extracted?.text_chars || 0)}</p></div>
-      </div>
+    </section>
+    <section class="card">
+      <div class="card-title"><div><h2>人工校正后导入</h2><p>金额、日期和地区字段会做结构化校验；上游识别结果不会被直接当成唯一真相。</p></div></div>
+      <form id="document-import-form" data-id="${esc(document.id)}" class="form-grid">
+        <div class="field full"><label>补贴名称</label><input name="title" required value="${esc(fieldValue('title') || document.title || '')}"></div>
+        <div class="field"><label>资金来源</label><input name="fundingSource" value="${esc(fieldValue('funding_source'))}" placeholder="例如：中央财政、省级财政"></div>
+        <div class="field"><label>补贴品类</label><input name="category" value="${esc(fieldValue('category'))}" placeholder="例如：家电、数码、汽车"></div>
+        <div class="field"><label>补贴省 / 直辖市</label><input name="jurisdictionName" value="${esc(province)}" placeholder="例如：广东省、上海市、全国"></div>
+        <div class="field"><label>补贴市</label><input name="jurisdictionCity" value="${esc(fieldValue('jurisdiction_city') || geo.city)}" placeholder="例如：广州市"></div>
+        <div class="field"><label>补贴区县</label><input name="jurisdictionDistrict" value="${esc(fieldValue('jurisdiction_district') || geo.district)}" placeholder="例如：宝山区、工业园区"></div>
+        <div class="field"><label>补贴比例（%）</label><input name="rate" type="number" min="0" max="100" step="0.01" value="${esc(fieldValue('rate'))}"></div>
+        <div class="field full"><label>补贴比例 / 满减规则</label><input name="ruleText" value="${esc(fieldValue('rule_text'))}" placeholder="例如：15%；满 2000 减 300"></div>
+        <div class="field"><label>补贴上限金额</label><input name="capAmount" type="number" min="0" step="0.01" value="${esc(fieldValue('cap_amount'))}"></div>
+        <div class="field"><label>金额单位</label><input name="capUnit" value="${esc(fieldValue('cap_unit', '元'))}" placeholder="元/件、元/单"></div>
+        <div class="field"><label>开始时间</label><input name="effectiveFrom" type="date" value="${esc(fieldValue('effective_from'))}"></div>
+        <div class="field"><label>结束时间</label><input name="effectiveTo" type="date" value="${esc(fieldValue('effective_to'))}"></div>
+        <div class="field"><label>金额类型</label><select name="amountType"><option value="unknown" ${selected(amountType, 'unknown')}>待确认</option><option value="percent" ${selected(amountType, 'percent')}>按比例</option><option value="fixed" ${selected(amountType, 'fixed')}>固定金额</option><option value="tiered" ${selected(amountType, 'tiered')}>分档 / 满减</option><option value="other" ${selected(amountType, 'other')}>其他</option></select></div>
+        <div class="field"><label>文件类型</label><select name="documentType"><option value="policy" ${selected(documentType, 'policy')}>政策文件</option><option value="implementation" ${selected(documentType, 'implementation')}>实施细则 / 方案</option><option value="notice" ${selected(documentType, 'notice')}>通知 / 公告</option><option value="interpretation" ${selected(documentType, 'interpretation')}>政策解读</option><option value="news" ${selected(documentType, 'news')}>新闻 / 发布会</option><option value="listing" ${selected(documentType, 'listing')}>栏目 / 专题页</option><option value="unknown" ${selected(documentType, 'unknown')}>待确认</option></select></div>
+        <div class="field"><label>规则类型</label><select name="ruleType"><option value="unknown" ${selected(ruleType, 'unknown')}>待确认</option><option value="percentage" ${selected(ruleType, 'percentage')}>按比例</option><option value="fixed" ${selected(ruleType, 'fixed')}>固定金额</option><option value="full_reduction" ${selected(ruleType, 'full_reduction')}>满减</option></select></div>
+        <div class="field"><label>发布机关</label><input name="issuer" value="${esc(fieldValue('issuer'))}" placeholder="例如：广东省商务厅"></div>
+        <div class="field"><label>官方文件名称</label><input name="officialFileName" value="${esc(officeName)}"></div>
+        <div class="field"><label>政策文号</label><input name="docNo" value="${esc(fieldValue('doc_no'))}" placeholder="例如：商办流通函〔2025〕469号"></div>
+        <div class="field full"><label>官方来源链接</label><input name="sourceUrl" type="url" value="${esc(sourceUrl)}" placeholder="https://...gov.cn/..."></div>
+        <div class="field full"><label>补充条件和说明</label><textarea name="conditionsText" placeholder="记录叠加规则、申领条件、旧机回收等原文口径。">${esc(fieldValue('conditions_text') || fieldValue('description'))}</textarea></div>
+        ${needsForce ? `<div class="field full"><label class="checkline"><input type="checkbox" name="force" value="1" required> 我已人工核对原文，确认这是一条需要入库的政策或补贴规则</label></div>` : ''}
+        <div class="full actions"><button class="btn primary" type="submit">确认并导入数据库</button><button class="btn" type="button" data-action="parse-document" data-id="${esc(document.id)}">重新解析</button><button class="btn ghost" type="button" data-action="discard-preview">取消展览</button></div>
+      </form>
+      <details style="margin-top:16px"><summary>查看原文证据与识别依据</summary>
+        <div style="margin-top:12px">${evidence.length ? evidence.slice(0, 12).map((item) => `<div class="evidence">${esc(item.quote || '')}<small>${esc(item.field_name)} · 第 ${esc(item.page_number || '?')} 页 · 置信度 ${esc(item.confidence ?? '—')}</small></div>`).join('') : '<div class="notice">未抽取到字段级引文，请以官方原文人工核对。</div>'}</div>
+      </details>
+      <p class="muted small">解析字符数：${esc(document.extracted?.text_chars || 0)}</p>
     </section>`;
 }
 
@@ -389,8 +429,10 @@ function renderCollectV2() {
 }
 
 function renderSourceDashboard() {
-  const filters = state.filters || { province: '', city: '', district: '', category: '', q: '', status: 'active' };
+  const filters = state.filters || { province: '', city: '', district: '', category: '', q: '', status: 'active', verification: '' };
   const list = state.policies || [];
+  const statusLabel = filters.status === 'active' ? '未过期' : filters.status === 'expired' ? '已过期' : '全部';
+  const verificationLabel = filters.verification === 'pending' ? '待核验' : filters.verification === 'verified' ? '已核验' : '';
   const option = (values, selected) => `<option value="">全部</option>${values.map((value) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(value)}</option>`).join('')}`;
   return shell(`
     <section class="card">
@@ -404,13 +446,14 @@ function renderSourceDashboard() {
     </section>
     <section class="card">
       <div class="card-title"><div><h2>筛选已有数据</h2><p>按省、市、区县、品类和相关性内容筛选。</p></div></div>
-      <div class="notice success" style="margin-bottom:14px"><strong>当前筛选结果：</strong>共 ${esc(list.length)} 条未过期政策。选择下方条件后点击“筛选看板”。</div>
+      <div class="notice success" style="margin-bottom:14px"><strong>当前筛选结果：</strong>共 ${esc(list.length)} 条${esc(statusLabel)}${esc(verificationLabel)}政策。下拉筛选会自动更新，也可以点击“筛选看板”。</div>
       <form id="source-dashboard-filter-form" class="form-grid">
         <div class="field"><label>省 / 直辖市</label><select name="province">${option(state.facets.provinces || [], filters.province)}</select></div>
         <div class="field"><label>市</label><select name="city">${option(state.facets.cities || [], filters.city)}</select></div>
         <div class="field"><label>区县</label><select name="district">${option(state.facets.districts || [], filters.district)}</select></div>
         <div class="field"><label>品类</label><select name="category">${option(state.facets.categories || [], filters.category)}</select></div>
         <div class="field"><label>政策状态</label><select name="status"><option value="active" ${filters.status === 'active' ? 'selected' : ''}>只看未过期</option><option value="expired" ${filters.status === 'expired' ? 'selected' : ''}>已过期</option><option value="all" ${filters.status === 'all' ? 'selected' : ''}>全部</option></select></div>
+        <div class="field"><label>核验状态</label><select name="verification"><option value="" ${!filters.verification ? 'selected' : ''}>全部核验状态</option><option value="pending" ${filters.verification === 'pending' ? 'selected' : ''}>待核验</option><option value="verified" ${filters.verification === 'verified' ? 'selected' : ''}>已核验</option></select></div>
         <div class="field full"><label>相关内容关键词</label><input name="q" value="${esc(filters.q || '')}" placeholder="例如：以旧换新、汽车、补贴、家电"></div>
         <div class="full actions"><button class="btn primary" type="submit">筛选看板</button><button class="btn" type="button" data-action="clear-dashboard-filter">清空筛选</button></div>
       </form>
@@ -424,7 +467,7 @@ function renderSourceDashboard() {
     <section class="card">
       <div class="card-title"><div><h2>已入库相关内容</h2><p>按省市区、品类和相关内容筛选后的政策列表。</p></div></div>
       <div class="table-wrap"><table><thead><tr><th>ID</th><th>补贴名称</th><th>资金来源</th><th>补贴品类</th><th>补贴省</th><th>补贴市</th><th>补贴区县</th><th>补贴比例 / 满减规则</th><th>补贴上限金额</th><th>开始时间</th><th>结束时间</th><th>官方文件</th></tr></thead><tbody>
-      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}</td><td><div class="title">${esc(item.title)}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}${item.description ? `<div class="meta">${esc(item.description)}</div>` : ''}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${esc(item.geo?.district || '—')}</td><td>${esc(item.ruleText || (item.rate != null ? `${item.rate}%` : '—'))}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}${item.endNote ? `<div class="meta">${esc(item.endNote)}</div>` : ''}</td><td><div class="title">${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">文号：${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">打开原文</a>` : '<span class="muted">待核验</span>'}</td></tr>`).join('') : '<tr><td colspan="12" class="empty">没有匹配内容。</td></tr>'}
+      ${list.length ? list.map((item) => `<tr><td class="mono">${esc(String(item.id || '').slice(0, 8))}<div class="meta"><span class="badge ${item.verificationStatus === 'verified' ? 'approved' : 'draft'}">${item.verificationStatus === 'verified' ? '已核验' : '待核验'}</span></div>${item.verificationStatus === 'verified' ? '' : `<button class="btn small" data-action="verify-policy" data-id="${esc(item.id)}">确认</button>`}</td><td><div class="title">${esc(item.title)}</div><div class="meta">${esc(item.documentType || '')}</div></td><td>${esc(item.fundingSource || '未在原文中明确')}</td><td>${esc(item.category || '—')}${item.description ? `<div class="meta">${esc(item.description)}</div>` : ''}</td><td>${esc(item.geo?.province || '—')}</td><td>${esc(item.geo?.city || '—')}</td><td>${esc(item.geo?.district || '—')}</td><td>${esc(item.ruleText || (item.rate != null ? `${item.rate}%` : '—'))}</td><td>${item.capAmount != null ? `${esc(item.capAmount)} ${esc(item.capUnit || '元')}` : '—'}</td><td>${esc(item.effectiveFrom || '—')}</td><td>${esc(item.effectiveTo || '—')}${item.endNote ? `<div class="meta">${esc(item.endNote)}</div>` : ''}</td><td><div class="title">${esc(item.officialFileName || item.title)}</div>${item.docNo ? `<div class="meta">文号：${esc(item.docNo)}</div>` : ''}${item.sourceUrl ? `<a href="${esc(item.sourceUrl)}" target="_blank" rel="noreferrer">打开原文</a>` : '<span class="muted">待核验</span>'}</td></tr>`).join('') : '<tr><td colspan="12" class="empty">没有匹配内容。</td></tr>'}
       </tbody></table></div>
     </section>`, '已有数据源看板', '数据源、采集文档和已入库政策的统一视图。');
 }
@@ -637,13 +680,22 @@ async function handleAction(action, target) {
     } catch (error) { toast(error.message, 'error'); }
     return;
   }
+  if (action === 'verify-policy') {
+    try {
+      await api(`/api/policies/${target.dataset.id}/verify`, { method: 'POST', body: {} });
+      toast('已标记为已核验', 'success');
+      await refresh();
+      render();
+    } catch (error) { toast(error.message, 'error'); }
+    return;
+  }
   if (action === 'discard-preview') {
     state.preview = null;
     render();
     return;
   }
   if (action === 'clear-dashboard-filter') {
-    state.filters = { province: '', city: '', district: '', category: '', q: '', status: 'active' };
+    state.filters = { province: '', city: '', district: '', category: '', q: '', status: 'active', verification: '' };
     state.policyQuery = '';
     const data = await api('/api/source-dashboard');
     state.sourceDashboard = data.sources || [];
@@ -815,6 +867,18 @@ app.addEventListener('submit', async (event) => {
       render();
       return;
     }
+    if (form.id === 'document-import-form') {
+      const formData = new FormData(form);
+      const documentId = form.dataset.id || formData.get('documentId');
+      if (!documentId) throw new Error('缺少文档 ID');
+      const data = await api(`/api/documents/${documentId}/import`, { method: 'POST', body: formData });
+      toast(data.duplicate ? '数据库中已存在相同政策' : '已按人工校正结果导入数据库', 'success');
+      state.preview = null;
+      await refresh();
+      state.view = 'source-dashboard';
+      render();
+      return;
+    }
     if (form.id === 'upload-form') {
       const formData = new FormData(form);
       const file = formData.get('file');
@@ -845,7 +909,7 @@ app.addEventListener('submit', async (event) => {
     }
     if (form.id === 'source-dashboard-filter-form') {
       const formData = new FormData(form);
-      const filters = Object.fromEntries(['province', 'city', 'district', 'category', 'q', 'status'].map((key) => [key, String(formData.get(key) || '')]));
+      const filters = Object.fromEntries(['province', 'city', 'district', 'category', 'q', 'status', 'verification'].map((key) => [key, String(formData.get(key) || '')]));
       state.filters = filters;
       state.policyQuery = filters.q;
       const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
@@ -863,6 +927,12 @@ app.addEventListener('submit', async (event) => {
 app.addEventListener('change', async (event) => {
   const dashboardForm = event.target.closest('#source-dashboard-filter-form');
   if (dashboardForm && event.target.tagName === 'SELECT') {
+    if (event.target.name === 'province') {
+      dashboardForm.elements.city.value = '';
+      dashboardForm.elements.district.value = '';
+    } else if (event.target.name === 'city') {
+      dashboardForm.elements.district.value = '';
+    }
     dashboardForm.requestSubmit();
     return;
   }

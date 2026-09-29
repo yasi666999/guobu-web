@@ -107,6 +107,7 @@ test('注册、提交、审核和发布主流程可运行', async () => {
       text_chars: 38,
       fields: {
         title: { value: '2026年数码产品购新补贴测试政策' },
+        document_type: { value: 'policy' },
         issuer: { value: '商务部' },
         funding_source: { value: '中央财政' },
         jurisdiction_name: { value: '全国' },
@@ -138,6 +139,54 @@ test('注册、提交、审核和发布主流程可运行', async () => {
     assert.equal(importedDocument.response.status, 201);
     assert.equal(importedDocument.body.duplicate, false);
     assert.ok(importedDocument.body.policyId);
+
+    const manualDocumentId = randomUUID();
+    const manualParsed = {
+      text: '上海宝山区家电专项消费券活动，满2000减300。',
+      text_chars: 29,
+      fields: {
+        title: { value: '上海宝山区家电专项消费券' },
+        document_type: { value: 'unknown' },
+        jurisdiction_name: { value: '上海' },
+      },
+      evidence: [{ field_name: 'rule_text', quote: '满2000减300', confidence: 0.9 }],
+      warnings: [],
+      relevance: { score: 12, level: 'low', isRelated: false, importable: false, summary: '人工确认' },
+    };
+    db.prepare(`
+      INSERT INTO documents (id, url, canonical_url, title, mime_type, status, extracted_json, extracted_text, fetched_at, parsed_at, created_at)
+      VALUES (?, ?, ?, ?, 'text/html', 'processed', ?, ?, ?, ?, ?)
+    `).run(
+      manualDocumentId,
+      'https://www.shanghai.gov.cn/test-manual.html',
+      'https://www.shanghai.gov.cn/test-manual.html',
+      '上海宝山区家电专项消费券',
+      JSON.stringify(manualParsed),
+      manualParsed.text,
+      new Date().toISOString(),
+      new Date().toISOString(),
+      new Date().toISOString(),
+    );
+    const manualForm = new FormData();
+    manualForm.set('title', '上海宝山区家电专项消费券');
+    manualForm.set('documentType', 'notice');
+    manualForm.set('fundingSource', '区级财政');
+    manualForm.set('category', '家电、数码');
+    manualForm.set('jurisdictionName', '上海市');
+    manualForm.set('jurisdictionCity', '上海市');
+    manualForm.set('jurisdictionDistrict', '宝山区');
+    manualForm.set('ruleText', '满2000减300');
+    manualForm.set('capAmount', '300');
+    manualForm.set('amountType', 'tiered');
+    manualForm.set('officialFileName', '宝山区商务委公告');
+    manualForm.set('force', '1');
+    const manualImport = await request(`/api/documents/${manualDocumentId}/import`, { method: 'POST', body: manualForm });
+    assert.equal(manualImport.response.status, 201);
+    const manualPolicy = db.prepare('SELECT jurisdiction_name, jurisdiction_city, jurisdiction_district, verification_status FROM policies WHERE id = ?').get(manualImport.body.policyId);
+    assert.equal(manualPolicy.jurisdiction_name, '上海市');
+    assert.equal(manualPolicy.jurisdiction_city, '上海市');
+    assert.equal(manualPolicy.jurisdiction_district, '宝山区');
+    assert.equal(manualPolicy.verification_status, 'pending');
 
     const invite = await request('/api/invites', {
       method: 'POST',

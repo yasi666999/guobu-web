@@ -57,8 +57,18 @@ function migrateDatabase(db) {
   ensureColumn(db, 'policies', 'end_note', 'TEXT');
   ensureColumn(db, 'policies', 'jurisdiction_city', 'TEXT');
   ensureColumn(db, 'policies', 'jurisdiction_district', 'TEXT');
+  ensureColumn(db, 'policies', 'document_type', 'TEXT');
+  ensureColumn(db, 'policies', 'verification_status', "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn(db, 'policies', 'verified_at', 'TEXT');
+  ensureColumn(db, 'policies', 'verified_by', 'TEXT');
   ensureColumn(db, 'subsidy_rules', 'cap_unit', 'TEXT');
   ensureColumn(db, 'subsidy_rules', 'rule_text', 'TEXT');
+  ensureColumn(db, 'subsidy_rules', 'rule_type', 'TEXT');
+  ensureColumn(db, 'subsidy_rules', 'threshold_amount', 'REAL');
+  ensureColumn(db, 'subsidy_rules', 'discount_amount', 'REAL');
+  ensureColumn(db, 'subsidy_rules', 'per_user_limit', 'INTEGER');
+  ensureColumn(db, 'subsidy_rules', 'stackable', 'INTEGER');
+  ensureColumn(db, 'subsidy_rules', 'conditions_text', 'TEXT');
 }
 
 export function parseJson(value, fallback = null) {

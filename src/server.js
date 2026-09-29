@@ -37,6 +37,7 @@ import { fetchAndStore, pollSource, runDueCollections } from './collector.js';
 import { parseMultipart } from './multipart.js';
 import { resolvePublicFile, saveSnapshot } from './storage.js';
 import { computeDedupKey, findDuplicate, normalizeUrl, validateContribution } from './validation.js';
+import { inferGeo, normalizeCity, normalizeDistrict, normalizeProvince } from './geo.js';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -380,54 +381,125 @@ function publishContribution(db, row, reviewer) {
   }
 }
 
+function toBoolean(value) {
+  return value === true || ['1', 'true', 'on', 'yes'].includes(String(value || '').toLowerCase());
+}
+
+function toNumber(value) {
+  if (value === '' || value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function firstText(...values) {
+  return values.find((value) => value != null && String(value).trim() !== '') ?? '';
+}
+
+function overrideText(overrides, key, ...fallbacks) {
+  if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key] == null ? '' : String(overrides[key]).trim();
+  return firstText(...fallbacks);
+}
+
+function overrideValue(overrides, key, fallback) {
+  return Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : fallback;
+}
+
+function inferPolicyLevel(province, city, district) {
+  if (province === '全国') return 'national';
+  if (district) return 'district';
+  if (city && city !== province) return 'city';
+  return province ? 'province' : 'other';
+}
+
 export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) {
   const document = getDocument(db, documentId);
   if (!document) throw httpError('文档不存在', 404);
   const parsed = documentExtractionJson(document);
   if (!parsed) throw httpError('文档尚未解析，不能导入', 409);
   const relevance = parsed.relevance || { score: 0, level: 'none', isRelated: false, summary: '' };
-  if (!relevance.isRelated && overrides.force !== true) {
+  const force = toBoolean(overrides.force);
+  if (!relevance.isRelated && !force) {
     throw httpError('该页面未识别为国补相关内容，不能自动导入', 409, relevance);
   }
 
   const summary = extractedFieldSummary(parsed);
-  const jurisdictionName = overrides.jurisdictionName || summary.jurisdictionName || '全国';
-  const title = overrides.title || summary.title || document.title || '未命名国补政策';
-  const officialFileName = overrides.officialFileName || summary.officialFileName || title;
-  const docNo = overrides.docNo || summary.docNo || '';
-  const issuer = overrides.issuer || summary.issuer || '';
-  const fundingSource = overrides.fundingSource || summary.fundingSource || '';
-  const description = overrides.description || summary.description || '';
-  const endNote = overrides.endNote || summary.endNote || '';
-  const capUnit = overrides.capUnit || summary.capUnit || '元';
-  const ruleText = overrides.ruleText || summary.ruleText || '';
-  const amountType = overrides.amountType || summary.amountType || 'unknown';
-  const rate = overrides.rate ?? summary.rate ?? null;
-  const amountValue = overrides.amountValue ?? summary.amountValue ?? null;
-  const capAmount = overrides.capAmount ?? summary.capAmount ?? null;
-  const effectiveFrom = overrides.effectiveFrom || summary.effectiveFrom || null;
-  const effectiveTo = overrides.effectiveTo || summary.effectiveTo || null;
-  const sourceUrl = document.canonical_url || document.url || null;
+  const documentType = overrideText(overrides, 'documentType', summary.documentType, 'unknown') || 'unknown';
+  if (!['policy', 'implementation', 'notice'].includes(documentType) && !force) {
+    throw httpError('该页面不是可直接入库的政策文件类型，需人工确认', 409, { documentType, title: firstText(overrides.title, summary.title, document.title) });
+  }
+
+  const title = overrideText(overrides, 'title', summary.title, document.title, '未命名国补政策') || '未命名国补政策';
+  const sourceUrl = normalizeUrl(overrideText(overrides, 'sourceUrl', document.canonical_url, document.url, ''));
+  const jurisdictionInput = overrideText(overrides, 'jurisdictionName', summary.jurisdictionName, '全国') || '全国';
+  const geo = inferGeo({
+    jurisdictionName: jurisdictionInput,
+    city: overrideText(overrides, 'jurisdictionCity', summary.jurisdictionCity),
+    district: overrideText(overrides, 'jurisdictionDistrict', summary.jurisdictionDistrict),
+    title,
+    sourceUrl,
+  });
+  const jurisdictionName = geo.province || normalizeProvince(jurisdictionInput) || jurisdictionInput || '全国';
+  const jurisdictionCity = geo.city || '';
+  const jurisdictionDistrict = geo.district || '';
+  const policyLevel = overrideText(overrides, 'policyLevel', inferPolicyLevel(jurisdictionName, jurisdictionCity, jurisdictionDistrict)) || inferPolicyLevel(jurisdictionName, jurisdictionCity, jurisdictionDistrict);
+
+  const officialFileName = overrideText(overrides, 'officialFileName', summary.officialFileName, title) || title;
+  const docNo = overrideText(overrides, 'docNo', summary.docNo);
+  const issuer = overrideText(overrides, 'issuer', summary.issuer);
+  const fundingSource = overrideText(overrides, 'fundingSource', summary.fundingSource);
+  const description = overrideText(overrides, 'description', summary.description);
+  const endNote = overrideText(overrides, 'endNote', summary.endNote);
+  const capUnit = overrideText(overrides, 'capUnit', summary.capUnit, '元') || '元';
+  const ruleText = overrideText(overrides, 'ruleText', summary.ruleText);
+  const ruleType = overrideText(overrides, 'ruleType', summary.ruleType, 'unknown') || 'unknown';
+  const thresholdAmount = toNumber(overrideValue(overrides, 'thresholdAmount', summary.thresholdAmount));
+  const discountAmount = toNumber(overrideValue(overrides, 'discountAmount', summary.discountAmount));
+  const perUserLimit = toNumber(overrideValue(overrides, 'perUserLimit', summary.perUserLimit));
+  const stackableRaw = overrideValue(overrides, 'stackable', summary.stackable);
+  const stackable = stackableRaw == null || stackableRaw === '' ? null : (toBoolean(stackableRaw) ? 1 : 0);
+  const conditionsText = overrideText(overrides, 'conditionsText', summary.conditionsText, description);
+  const amountType = overrideText(overrides, 'amountType', summary.amountType, 'unknown') || 'unknown';
+  const rate = toNumber(overrideValue(overrides, 'rate', summary.rate));
+  const amountValue = toNumber(overrideValue(overrides, 'amountValue', summary.amountValue));
+  const capAmount = toNumber(overrideValue(overrides, 'capAmount', summary.capAmount));
+  const effectiveFrom = overrideText(overrides, 'effectiveFrom', summary.effectiveFrom, '');
+  const effectiveTo = overrideText(overrides, 'effectiveTo', summary.effectiveTo, '');
+
+  const validation = validateContribution({
+    title,
+    program: overrideText(overrides, 'program', summary.program, '消费品以旧换新'),
+    policyLevel,
+    issuer,
+    jurisdictionName,
+    category: overrideText(overrides, 'category', summary.category, '其他'),
+    amountType,
+    amountValue,
+    rate,
+    capAmount,
+    effectiveFrom,
+    effectiveTo,
+    sourceUrl,
+    notes: overrideText(overrides, 'conditionsText', summary.conditionsText, description),
+  });
+  if (validation.errors.length) throw httpError('导入字段校验失败', 400, validation.errors);
+
   const dedupKey = computeDedupKey({ title, issuer, effectiveFrom, jurisdictionName });
   const existing = findDuplicate(db, dedupKey);
   if (existing) {
     return { duplicate: true, contributionId: existing.id, policyId: db.prepare('SELECT id FROM policies WHERE contribution_id = ?').get(existing.id)?.id || null };
   }
 
- const policyLevel = overrides.policyLevel || (jurisdictionName === '全国' ? 'national' : 'other');
-  const inferredGeo = geoParts(jurisdictionName, title, sourceUrl || '');
-  const jurisdictionCity = overrides.jurisdictionCity || summary.jurisdictionCity || inferredGeo.city || '';
-  const jurisdictionDistrict = overrides.jurisdictionDistrict || summary.jurisdictionDistrict || inferredGeo.district || '';
   const timestamp = nowIso();
   const contributionId = newId();
   const policyId = newId();
-  const validation = {
+  const status = effectiveTo && effectiveTo < timestamp.slice(0, 10) ? 'expired' : 'active';
+  const importNotes = [relevance.summary, force ? '已人工确认导入' : ''].filter(Boolean).join('；');
+  const validationJson = {
     errors: [],
-    warnings: ['由采集页自动识别并导入；请核对原始来源。'],
+    warnings: ['由采集页自动识别并导入；请核对原始来源。', ...(force ? ['该记录由人工确认后导入。'] : [])],
     relevance,
     importedFromDocument: documentId,
   };
-  const status = effectiveTo && effectiveTo < timestamp.slice(0, 10) ? 'expired' : 'active';
 
   db.exec('BEGIN IMMEDIATE');
   try {
@@ -438,29 +510,31 @@ export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) 
         notes, extracted_json, validation_json, dedup_key, document_id, reviewer_id, reviewed_at, created_at, updated_at
       ) VALUES (?, ?, 'approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      contributionId, actorId, title, overrides.program || summary.program || '消费品以旧换新',
-      policyLevel, issuer, jurisdictionName, overrides.category || summary.category || '其他', amountType,
-      amountValue, rate, capAmount, effectiveFrom, effectiveTo, sourceUrl,
-      `由网址自动采集；${relevance.summary || ''}`.trim(), JSON.stringify(parsed), JSON.stringify(validation),
-      dedupKey || null, documentId, actorId, timestamp, timestamp, timestamp,
+      contributionId, actorId, title, validation.value.program, policyLevel, issuer, jurisdictionName,
+      validation.value.category, amountType, amountValue, rate, capAmount, effectiveFrom || null, effectiveTo || null,
+      sourceUrl || null, importNotes, JSON.stringify(parsed), JSON.stringify(validationJson), dedupKey || null,
+      documentId, actorId, timestamp, timestamp, timestamp,
     );
     db.prepare(`
       INSERT INTO policies (
         id, contribution_id, title, official_file_name, doc_no, program, policy_level, issuer, funding_source,
-        description, end_note, jurisdiction_code, jurisdiction_name, jurisdiction_city, jurisdiction_district,
-        status, effective_from, effective_to, source_url, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        description, end_note, document_type, verification_status, jurisdiction_code, jurisdiction_name,
+        jurisdiction_city, jurisdiction_district, status, effective_from, effective_to, source_url, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      policyId, contributionId, title, officialFileName, docNo, overrides.program || summary.program || '消费品以旧换新', policyLevel,
-      issuer, fundingSource, description, endNote, jurisdictionName, jurisdictionCity, jurisdictionDistrict,
-      status, effectiveFrom, effectiveTo, sourceUrl, timestamp, timestamp,
+      policyId, contributionId, title, officialFileName, docNo, validation.value.program, policyLevel,
+      issuer, fundingSource, description, endNote, documentType, jurisdictionName, jurisdictionCity,
+      jurisdictionDistrict, status, effectiveFrom || null, effectiveTo || null, sourceUrl || null, timestamp, timestamp,
     );
     db.prepare(`
-      INSERT INTO subsidy_rules (id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, cap_unit, rule_text, conditions_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO subsidy_rules (
+        id, policy_id, category, amount_type, rate, fixed_amount, cap_amount, cap_unit, rule_text,
+        rule_type, threshold_amount, discount_amount, per_user_limit, stackable, conditions_text, conditions_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      newId(), policyId, overrides.category || summary.category || '其他', amountType, rate,
-      amountValue, capAmount, capUnit, ruleText, JSON.stringify({ relevance, notes: '采集页自动导入' }), timestamp,
+      newId(), policyId, validation.value.category, amountType, rate, amountValue, capAmount, capUnit,
+      ruleText, ruleType, thresholdAmount, discountAmount, perUserLimit, stackable, conditionsText,
+      JSON.stringify({ relevance, notes: importNotes }), timestamp,
     );
     const evidenceRows = (parsed.evidence || []).length
       ? parsed.evidence
@@ -471,7 +545,13 @@ export function importDocumentAsPolicy(db, documentId, actorId, overrides = {}) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(newId(), policyId, documentId, evidence.field_name || 'source', evidence.quote || '', evidence.page_number || null, evidence.confidence ?? null, timestamp);
     }
-    addEvent(db, { entityType: 'document', entityId: documentId, actorId, action: 'imported_as_policy', detail: { contributionId, policyId, relevance } });
+    if (force) {
+      db.prepare(`
+        INSERT INTO evidence (id, policy_id, document_id, field_name, quote, page_number, confidence, created_at)
+        VALUES (?, ?, ?, 'manual_review', '人工确认后导入，请保留审核记录', NULL, NULL, ?)
+      `).run(newId(), policyId, documentId, timestamp);
+    }
+    addEvent(db, { entityType: 'document', entityId: documentId, actorId, action: 'imported_as_policy', detail: { contributionId, policyId, relevance, force, overrides: Object.keys(overrides) } });
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
@@ -567,25 +647,7 @@ function statsFor(db) {
 }
 
 function geoParts(name, title = '', sourceUrl = '') {
-  const text = String(name || '').replace(/\s+/g, '').replace(/[／]/g, '/');
-  const extra = `${String(title || '').replace(/\s+/g, '')}${String(sourceUrl || '').replace(/\s+/g, '')}`;
-  const provinceMatch = text.match(/([^/]+?(?:省|自治区|特别行政区|北京市|上海市|天津市|重庆市))/);
-  const cityMatch = text.match(/([^/]+?市)/);
-  const districtMatch = text.match(/([^/]+?(?:区|县|旗))/);
-  const cleanCity = (value) => value && !/(省|自治区|财政|政府|委员会|商务局|发展和改革)/.test(value) ? value : '';
-  const cleanDistrict = (value) => value && !/(省|自治区|财政|政府|委员会|商务局|发展和改革|专区|换新|关于|取消|恢复|实施|通知|公告|年|月|日)/.test(value) ? value : '';
-  const titleCity = [...extra.matchAll(/([\u4e00-\u9fff]{2,4}市)/g)]
-    .map((match) => match[1])
-    .find((value) => !/(省|自治区|财政|政府|委员会|商务局|发展和改革)/.test(value));
-  const titleDistrict = [...extra.matchAll(/([\u4e00-\u9fff]{2,8}(?:区|县|旗))/g)]
-    .map((match) => match[1])
-    .find((value) => !/(省|自治区|财政|政府|委员会|商务局|发展和改革|专区|换新|关于|取消|恢复|实施|通知|公告|年|月|日)/.test(value));
-  const provinceNames = ['内蒙古', '黑龙江', '新疆', '西藏', '广西', '宁夏', '北京', '天津', '河北', '山西', '辽宁', '吉林', '上海', '江苏', '浙江', '安徽', '福建', '江西', '山东', '河南', '湖北', '湖南', '广东', '海南', '重庆', '四川', '贵州', '云南', '陕西', '甘肃', '青海'];
-  return {
-    province: provinceMatch?.[1] || provinceNames.find((province) => text.includes(province) || extra.includes(province)) || (text.includes('全国') ? '全国' : ''),
-    city: cleanCity(cityMatch?.[1]) || cleanCity(titleCity),
-    district: cleanDistrict(districtMatch?.[1]) || cleanDistrict(titleDistrict),
-  };
+  return inferGeo({ jurisdictionName: name, title, sourceUrl });
 }
 
 function unique(values) {
@@ -593,11 +655,17 @@ function unique(values) {
 }
 
 function policyGeo(row) {
-  const derived = geoParts(row.jurisdiction_name, row.title, row.source_url);
+  const derived = inferGeo({
+    jurisdictionName: row.jurisdiction_name,
+    city: row.jurisdiction_city,
+    district: row.jurisdiction_district,
+    title: row.title,
+    sourceUrl: row.source_url,
+  });
   return {
-    province: derived.province || row.jurisdiction_name || '',
-    city: row.jurisdiction_city || derived.city || '',
-    district: row.jurisdiction_district || derived.district || '',
+    province: derived.province || normalizeProvince(row.jurisdiction_name) || row.jurisdiction_name || '',
+    city: derived.city || row.jurisdiction_city || '',
+    district: derived.district || row.jurisdiction_district || '',
   };
 }
 
@@ -927,6 +995,7 @@ async function handleApi(db, req, res, url) {
     const category = String(url.searchParams.get('category') || '').trim();
     const q = String(url.searchParams.get('q') || '').trim();
     const policyStatus = String(url.searchParams.get('status') || 'active').trim();
+    const verification = String(url.searchParams.get('verification') || '').trim();
     const sourceFilters = [];
     const sourceValues = [];
     for (const [field, value] of [['province', province], ['city', city], ['district', district]]) {
@@ -958,11 +1027,23 @@ async function handleApi(db, req, res, url) {
 
     const policyFilters = [];
     const policyValues = [];
-    for (const value of [province, city, district]) {
-      if (value) {
-        policyFilters.push('(p.jurisdiction_name LIKE ? OR p.title LIKE ? OR p.source_url LIKE ?)');
-        policyValues.push(`%${value}%`, `%${value}%`, `%${value}%`);
-      }
+    const normalizedProvince = normalizeProvince(province);
+    const normalizedCity = normalizeCity(city, normalizedProvince);
+    const normalizedDistrict = normalizeDistrict(district);
+    if (province) {
+      const value = normalizedProvince || province;
+      policyFilters.push('(p.jurisdiction_name = ? OR p.jurisdiction_name LIKE ? OR p.title LIKE ?)');
+      policyValues.push(value, '%' + value + '%', '%' + value + '%');
+    }
+    if (city) {
+      const value = normalizedCity || city;
+      policyFilters.push('(p.jurisdiction_city = ? OR p.jurisdiction_name LIKE ? OR p.title LIKE ?)');
+      policyValues.push(value, '%' + value + '%', '%' + value + '%');
+    }
+    if (district) {
+      const value = normalizedDistrict || district;
+      policyFilters.push('(p.jurisdiction_district = ? OR p.title LIKE ?)');
+      policyValues.push(value, '%' + value + '%');
     }
     if (category) {
       policyFilters.push('r.category LIKE ?');
@@ -971,6 +1052,10 @@ async function handleApi(db, req, res, url) {
     if (policyStatus && policyStatus !== 'all') {
       policyFilters.push('p.status = ?');
       policyValues.push(policyStatus);
+    }
+    if (['pending', 'verified'].includes(verification)) {
+      policyFilters.push("COALESCE(p.verification_status, 'pending') = ?");
+      policyValues.push(verification);
     }
     if (q) {
       policyFilters.push(`(p.title LIKE ? OR p.issuer LIKE ? OR p.program LIKE ? OR p.source_url LIKE ? OR EXISTS (
@@ -981,6 +1066,7 @@ async function handleApi(db, req, res, url) {
     const policyWhere = policyFilters.length ? `WHERE ${policyFilters.join(' AND ')}` : '';
     const policies = db.prepare(`
       SELECT p.*, r.category, r.amount_type, r.rate, r.fixed_amount, r.cap_amount, r.cap_unit,
+        r.rule_text, r.rule_type, r.threshold_amount, r.discount_amount, r.per_user_limit, r.stackable,
         (SELECT e.quote FROM evidence e WHERE e.policy_id = p.id LIMIT 1) AS content_snippet
       FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id
       ${policyWhere}
@@ -996,6 +1082,8 @@ async function handleApi(db, req, res, url) {
       docNo: row.doc_no,
       description: row.description,
       endNote: row.end_note,
+      documentType: row.document_type,
+      verificationStatus: row.verification_status,
       jurisdictionName: row.jurisdiction_name,
       geo: policyGeo(row),
       jurisdictionCity: row.jurisdiction_city,
@@ -1011,19 +1099,28 @@ async function handleApi(db, req, res, url) {
       capAmount: row.cap_amount,
       capUnit: row.cap_unit,
       ruleText: row.rule_text,
+      ruleType: row.rule_type,
+      thresholdAmount: row.threshold_amount,
+      discountAmount: row.discount_amount,
+      perUserLimit: row.per_user_limit,
+      stackable: row.stackable,
       contentSnippet: row.content_snippet,
     }));
 
-    const allPolicies = db.prepare('SELECT p.status, p.jurisdiction_name, p.jurisdiction_city, p.jurisdiction_district, p.title, p.source_url, r.category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
+    const allPolicies = db.prepare('SELECT p.status, p.verification_status, p.jurisdiction_name, p.jurisdiction_city, p.jurisdiction_district, p.title, p.source_url, r.category FROM policies p LEFT JOIN subsidy_rules r ON r.policy_id = p.id').all();
     const statusPool = policyStatus === 'all' ? allPolicies : allPolicies.filter((item) => item.status === policyStatus);
-    const geoPool = statusPool.map((item) => ({ ...item, geo: policyGeo(item) }));
-    const provincePool = province ? geoPool.filter((item) => item.geo.province === province) : geoPool;
-    const cityPool = city ? provincePool.filter((item) => item.geo.city === city) : provincePool;
+    const verificationPool = ['pending', 'verified'].includes(verification)
+      ? statusPool.filter((item) => (item.verification_status || 'pending') === verification)
+      : statusPool;
+    const geoPool = verificationPool.map((item) => ({ ...item, geo: policyGeo(item) }));
+    const provincePool = province ? geoPool.filter((item) => item.geo.province === (normalizedProvince || province)) : geoPool;
+    const cityPool = city ? provincePool.filter((item) => item.geo.city === (normalizedCity || city)) : provincePool;
+    const districtPool = district ? cityPool.filter((item) => item.geo.district === (normalizedDistrict || district)) : cityPool;
     const facets = {
       provinces: unique(geoPool.map((item) => item.geo.province)),
       cities: unique(provincePool.map((item) => item.geo.city)),
       districts: unique(cityPool.map((item) => item.geo.district)),
-      categories: unique(cityPool.map((item) => item.category)),
+      categories: unique(districtPool.map((item) => item.category)),
     };
 
     return jsonResponse(res, 200, { sources: rows.map((row) => ({
@@ -1031,7 +1128,7 @@ async function handleApi(db, req, res, url) {
       documentCount: row.document_count,
       importedCount: row.imported_count,
       lastDocumentAt: row.last_document_at,
-    })), policies, facets, filters: { province, city, district, category, q, status: policyStatus } });
+    })), policies, facets, filters: { province, city, district, category, q, status: policyStatus, verification } });
   }
 
   if (pathname === '/api/import' && req.method === 'POST') {
@@ -1089,6 +1186,7 @@ async function handleApi(db, req, res, url) {
       id: row.id, title: row.title, program: row.program, level: row.policy_level, issuer: row.issuer,
       fundingSource: row.funding_source,
       officialFileName: row.official_file_name, docNo: row.doc_no, description: row.description, endNote: row.end_note,
+      documentType: row.document_type, verificationStatus: row.verification_status,
       jurisdictionName: row.jurisdiction_name, status: row.status, effectiveFrom: row.effective_from,
       jurisdictionCity: row.jurisdiction_city, jurisdictionDistrict: row.jurisdiction_district,
       geo: policyGeo(row),
@@ -1096,6 +1194,18 @@ async function handleApi(db, req, res, url) {
       amountType: row.amount_type, rate: row.rate, fixedAmount: row.fixed_amount, capAmount: row.cap_amount, capUnit: row.cap_unit,
       ruleText: row.rule_text,
     })) });
+  }
+
+  const verifyPolicyMatch = /^\/api\/policies\/([^/]+)\/verify$/.exec(pathname);
+  if (verifyPolicyMatch && req.method === 'POST') {
+    const actor = requireUser(db, req);
+    const policy = db.prepare('SELECT id FROM policies WHERE id = ?').get(verifyPolicyMatch[1]);
+    if (!policy) throw httpError('政策不存在', 404);
+    const timestamp = nowIso();
+    db.prepare('UPDATE policies SET verification_status = ?, verified_at = ?, verified_by = ?, updated_at = ? WHERE id = ?')
+      .run('verified', timestamp, actor.id, timestamp, policy.id);
+    addEvent(db, { entityType: 'policy', entityId: policy.id, actorId: actor.id, action: 'verified' });
+    return jsonResponse(res, 200, { ok: true });
   }
 
   if (pathname === '/api/aggregates' && req.method === 'GET') {

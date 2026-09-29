@@ -177,6 +177,7 @@ for (const record of records) {
   const policyId = newId();
   const policyLevel = record.province === '全国' ? 'national' : record.district ? 'district' : record.city && record.city !== record.province ? 'city' : 'province';
   const amountType = /满\s*\d+.*减\s*\d+/.test(record.ruleText) ? 'tiered' : record.rate != null ? 'percent' : 'unknown';
+  const documentType = record.district || /满\s*\d+.*减\s*\d+/.test(record.ruleText) ? 'notice' : 'policy';
   const validation = { errors: [], warnings: ['用户提供示例数据，未附官方链接，使用前需核验。'], userProvided: true };
 
   db.prepare(`
@@ -194,12 +195,12 @@ for (const record of records) {
   db.prepare(`
     INSERT INTO policies (
       id, contribution_id, title, official_file_name, doc_no, program, policy_level, issuer,
-      funding_source, description, end_note, jurisdiction_name, jurisdiction_city, jurisdiction_district,
+      funding_source, description, end_note, document_type, jurisdiction_name, jurisdiction_city, jurisdiction_district,
       status, effective_from, effective_to, source_url, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, '消费品以旧换新', ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, '消费品以旧换新', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL, ?, ?)
   `).run(
     policyId, contributionId, record.title, record.officialFileName, record.docNo, policyLevel,
-    pack.sourceName, record.fundingSource, record.category, record.endNote, record.province,
+    pack.sourceName, record.fundingSource, record.category, record.endNote, documentType, record.province,
     record.city, record.district, record.effectiveFrom, record.effectiveTo, timestamp, timestamp,
   );
   db.prepare(`

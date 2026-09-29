@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeDedupKey, validateContribution } from '../src/validation.js';
 import { analyzeGuobuRelevance, runDocumentParser } from '../src/extract.js';
+import { inferGeo } from '../src/geo.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -58,4 +59,15 @@ test('国补相关度识别能区分国补政策和普通页面', () => {
   assert.equal(related.isRelated, true);
   assert.ok(related.score >= 20);
   assert.equal(unrelated.isRelated, false);
+});
+
+
+test('地区归一化能识别城市所属省份并防止省市串档', () => {
+  const guangzhou = inferGeo({ jurisdictionName: '广州市广州市' });
+  assert.deepEqual(guangzhou, { province: '广东省', city: '广州市', district: '' });
+  const shanghai = inferGeo({ jurisdictionName: '上海', city: '上海市', district: '宝山区' });
+  assert.deepEqual(shanghai, { province: '上海市', city: '上海市', district: '宝山区' });
+  const anqing = inferGeo({ jurisdictionName: '安徽省', city: '安庆市' });
+  assert.equal(anqing.province, '安徽省');
+  assert.equal(anqing.city, '安庆市');
 });

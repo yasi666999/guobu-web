@@ -150,6 +150,10 @@ CREATE TABLE IF NOT EXISTS policies (
   funding_source TEXT,
   description TEXT,
   end_note TEXT,
+  document_type TEXT,
+  verification_status TEXT NOT NULL DEFAULT 'pending',
+  verified_at TEXT,
+  verified_by TEXT REFERENCES users(id),
   jurisdiction_code TEXT,
   jurisdiction_name TEXT,
   jurisdiction_city TEXT,
@@ -173,6 +177,12 @@ CREATE TABLE IF NOT EXISTS subsidy_rules (
   cap_amount REAL,
   cap_unit TEXT,
   rule_text TEXT,
+  rule_type TEXT,
+  threshold_amount REAL,
+  discount_amount REAL,
+  per_user_limit INTEGER,
+  stackable INTEGER,
+  conditions_text TEXT,
   conditions_json TEXT,
   created_at TEXT NOT NULL
 );
