@@ -11,30 +11,35 @@ if (-not (Test-Path $Tailscale)) {
   $MsiUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-$Arch.msi"
   $MsiPath = Join-Path $env:TEMP "tailscale-setup-$Arch.msi"
 
-  Write-Host "下载 Tailscale 官方安装包..."
+  Write-Host "Downloading official Tailscale installer..."
   Invoke-WebRequest -Uri $MsiUrl -OutFile $MsiPath -UseBasicParsing
 
-  Write-Host "安装 Tailscale..."
-  $Process = Start-Process msiexec.exe -ArgumentList "/i `"$MsiPath`" /qn /norestart" -Wait -PassThru -Verb RunAs
+  Write-Host "Installing Tailscale..."
+  $IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  $Process = if ($IsAdmin) {
+    Start-Process msiexec.exe -ArgumentList "/i `"$MsiPath`" /qn /norestart" -Wait -PassThru
+  } else {
+    Start-Process msiexec.exe -ArgumentList "/i `"$MsiPath`" /qn /norestart" -Wait -PassThru -Verb RunAs
+  }
   if ($Process.ExitCode -ne 0) {
-    throw "Tailscale 安装失败，退出码：$($Process.ExitCode)"
+    throw "Tailscale installation failed with exit code: $($Process.ExitCode)"
   }
 }
 
 if (-not (Test-Path $Tailscale)) {
-  throw "Tailscale 安装后未找到：$Tailscale"
+  throw "Tailscale executable not found after installation: $Tailscale"
 }
 
 if ($InstallOnly) {
-  Write-Host "Tailscale 已安装。"
+  Write-Host "Tailscale is installed."
   exit 0
 }
 
-Write-Host "请在弹出的浏览器中登录 Tailscale。"
+Write-Host "Please sign in to Tailscale in the browser window that opens."
 & $Tailscale up
 
-Write-Host "正在开启 Tailscale Funnel，公开端口 443，转发到本机 8787。"
+Write-Host "Enabling Tailscale Funnel on public HTTPS port 443 for local port 8787."
 & $Tailscale funnel 8787
 
-Write-Host "当前 Funnel 状态："
+Write-Host "Current Funnel status:"
 & $Tailscale funnel status

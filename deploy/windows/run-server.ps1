@@ -18,14 +18,14 @@ $env:COOKIE_SECURE = "1"
 $env:ALLOW_REGISTRATION = "0"
 $env:AUTO_COLLECT = "1"
 
-"[$(Get-Date -Format s)] 启动国补协作库" | Add-Content -LiteralPath $LogFile -Encoding utf8
+"[$(Get-Date -Format s)] Starting Guobu Hub" | Add-Content -LiteralPath $LogFile -Encoding utf8
 
 while ($true) {
   try {
     & $Node (Join-Path $Root "src\server.js") *>> $LogFile
   } catch {
-    "[$(Get-Date -Format s)] 服务异常：$($_.Exception.Message)" | Add-Content -LiteralPath $LogFile -Encoding utf8
+    "[$(Get-Date -Format s)] Service error: $($_.Exception.Message)" | Add-Content -LiteralPath $LogFile -Encoding utf8
   }
-  "[$(Get-Date -Format s)] 服务已退出，5 秒后自动重启" | Add-Content -LiteralPath $LogFile -Encoding utf8
+  "[$(Get-Date -Format s)] Service exited. Restarting in 5 seconds." | Add-Content -LiteralPath $LogFile -Encoding utf8
   Start-Sleep -Seconds 5
 }

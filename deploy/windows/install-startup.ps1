@@ -12,8 +12,8 @@ $Shortcut.TargetPath = $PowerShell
 $Shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunScript`""
 $Shortcut.WorkingDirectory = $Root
 $Shortcut.WindowStyle = 7
-$Shortcut.Description = "国补协作库本地服务器"
+$Shortcut.Description = "Guobu Hub local server"
 $Shortcut.Save()
 
-Write-Host "已创建开机启动项：$ShortcutPath"
-Write-Host "当前用户登录 Windows 后会自动启动平台。"
+Write-Host "Startup shortcut created: $ShortcutPath"
+Write-Host "Guobu Hub will start after this Windows user logs in."
