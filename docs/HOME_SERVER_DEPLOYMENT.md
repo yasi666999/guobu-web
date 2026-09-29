@@ -35,6 +35,12 @@ http://127.0.0.1:8787
 powershell -ExecutionPolicy Bypass -File deploy\windows\setup-tailscale-funnel.ps1
 ```
 
+如果只想先安装 Tailscale，不立即登录和开启 Funnel：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\setup-tailscale-funnel.ps1 -InstallOnly
+```
+
 脚本会：
 
 1. 安装 Tailscale；

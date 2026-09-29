@@ -19,4 +19,13 @@ $env:ALLOW_REGISTRATION = "0"
 $env:AUTO_COLLECT = "1"
 
 "[$(Get-Date -Format s)] 启动国补协作库" | Add-Content -LiteralPath $LogFile -Encoding utf8
-& $Node (Join-Path $Root "src\server.js") *>> $LogFile
+
+while ($true) {
+  try {
+    & $Node (Join-Path $Root "src\server.js") *>> $LogFile
+  } catch {
+    "[$(Get-Date -Format s)] 服务异常：$($_.Exception.Message)" | Add-Content -LiteralPath $LogFile -Encoding utf8
+  }
+  "[$(Get-Date -Format s)] 服务已退出，5 秒后自动重启" | Add-Content -LiteralPath $LogFile -Encoding utf8
+  Start-Sleep -Seconds 5
+}
